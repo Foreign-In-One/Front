@@ -1,0 +1,15 @@
+{
+  "Team Header Comment": {
+    "scope": "javascript,typescript,javascriptreact,typescriptreact",
+    "prefix": "doc",
+    "body": [
+      "/**",
+      " * @page: ${1:페이지명}",
+      " * @description: ${1:설명을 입력하세요}",
+      " * @author: ${3:작성자명}",
+      " * @date: $CURRENT_YEAR-$CURRENT_MONTH-$CURRENT_DATE",
+      " */"
+    ],
+    "description": "팀 공통 페이지 상단 정보 주석 생성"
+  }
+}
