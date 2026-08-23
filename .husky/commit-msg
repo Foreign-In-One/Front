@@ -1,2 +1,0 @@
-#!/bin/sh
-node scripts/commit-msg.js "$1"
