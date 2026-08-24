@@ -1,26 +1,191 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --background: #F4F7FB;
+  --surface: #ECF1F6;
+  --foreground: #101A2F;
+  --card: #FFFFFF;
+  --card-foreground: #101A2F;
+  --popover: #FFFFFF;
+  --popover-foreground: #101A2F;
+  --primary: #143463;
+  --primary-foreground: #F8FAFD;
+  --secondary: #E7EEF5;
+  --secondary-foreground: #143463;
+  --muted: #EBEFF4;
+  --muted-foreground: #5E6A7B;
+  --accent: #D7EBFA;
+  --accent-foreground: #112D55;
+  --destructive: #E7000B;
+  --destructive-foreground: #F8FAFC;
+  --border: #DAE0E8;
+  --input: #DAE0E8;
+  --ring: #5072A6;
+
+  --signal: #009962;
+  --signal-foreground: #004022;
+  --signal-soft: #D9F7E5;
+
+  --warn: #F19024;
+  --warn-foreground: #863900;
+  --warn-soft: #FFEED1;
+
+  --info: #4F8AC6;
+  --info-foreground: #174276;
+  --info-soft: #E0F1FF;
+
+  --chart-1: #009962;
+  --chart-2: #4F8AC6;
+  --chart-3: #F19024;
+  --chart-4: #104E64;
+  --chart-5: #FE9A00;
 }
 
 @theme inline {
   --color-background: var(--background);
+  --color-surface: var(--surface);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+
+  --color-signal: var(--signal);
+  --color-signal-foreground: var(--signal-foreground);
+  --color-signal-soft: var(--signal-soft);
+
+  --color-warn: var(--warn);
+  --color-warn-foreground: var(--warn-foreground);
+  --color-warn-soft: var(--warn-soft);
+
+  --color-info: var(--info);
+  --color-info-foreground: var(--info-foreground);
+  --color-info-soft: var(--info-soft);
+
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+
+  --font-sans: var(--font-geist-sans, ui-sans-serif, system-ui, sans-serif);
+  --font-mono: var(--font-geist-mono, ui-monospace, monospace);
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+    --background: #060D1A;
+    --surface: #0E1928;
+    --foreground: #F8FAFC;
+    --card: #0F172B;
+    --card-foreground: #F8FAFC;
+    --popover: #0F172B;
+    --popover-foreground: #F8FAFC;
+    --primary: #E2E8F0;
+    --primary-foreground: #0F172B;
+    --secondary: #1D293D;
+    --secondary-foreground: #F8FAFC;
+    --muted: #1D293D;
+    --muted-foreground: #90A1B9;
+    --accent: #1D293D;
+    --accent-foreground: #F8FAFC;
+    --destructive: #FF6467;
+    --destructive-foreground: #F8FAFC;
+    --border: rgba(255, 255, 255, 0.1);
+    --input: rgba(255, 255, 255, 0.15);
+    --ring: #6A7282;
+
+    --signal: #3FBF86;
+    --signal-foreground: #A9E8C6;
+    --signal-soft: #0B2E1E;
+
+    --warn: #FFA746;
+    --warn-foreground: #FFD394;
+    --warn-soft: #43260A;
+
+    --info: #73A9E1;
+    --info-foreground: #BADBFE;
+    --info-soft: #12283E;
+
+    --chart-1: #1447E6;
+    --chart-2: #00BC7D;
+    --chart-3: #FE9A00;
+    --chart-4: #AD46FF;
+    --chart-5: #FF2056;
   }
+}
+
+.dark {
+  --background: #060D1A;
+  --surface: #0E1928;
+  --foreground: #F8FAFC;
+  --card: #0F172B;
+  --card-foreground: #F8FAFC;
+  --popover: #0F172B;
+  --popover-foreground: #F8FAFC;
+  --primary: #E2E8F0;
+  --primary-foreground: #0F172B;
+  --secondary: #1D293D;
+  --secondary-foreground: #F8FAFC;
+  --muted: #1D293D;
+  --muted-foreground: #90A1B9;
+  --accent: #1D293D;
+  --accent-foreground: #F8FAFC;
+  --destructive: #FF6467;
+  --destructive-foreground: #F8FAFC;
+  --border: rgba(255, 255, 255, 0.1);
+  --input: rgba(255, 255, 255, 0.15);
+  --ring: #6A7282;
+
+  --signal: #3FBF86;
+  --signal-foreground: #A9E8C6;
+  --signal-soft: #0B2E1E;
+
+  --warn: #FFA746;
+  --warn-foreground: #FFD394;
+  --warn-soft: #43260A;
+
+  --info: #73A9E1;
+  --info-foreground: #BADBFE;
+  --info-soft: #12283E;
+
+  --chart-1: #1447E6;
+  --chart-2: #00BC7D;
+  --chart-3: #FE9A00;
+  --chart-4: #AD46FF;
+  --chart-5: #FF2056;
 }
 
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-sans);
+}
+
+@keyframes pc-rise {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.pc-rise {
+  animation: pc-rise 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
