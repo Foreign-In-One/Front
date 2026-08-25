@@ -3,6 +3,8 @@
 import { MessageCircle, SendHorizontal, Sparkles, X } from 'lucide-react';
 import Link from 'next/link';
 import { useEffect, useRef, useState } from 'react';
+import { dDay, formatKDate } from '@/lib/date';
+import { readProfile, type StoredProfile } from '@/lib/profile';
 
 const SUGGESTIONS = [
   '내가 지금 확인해야 하는 건 뭐야?',
@@ -20,41 +22,143 @@ interface Message {
 }
 
 const PROFILE_ACTION = { label: '금융권리 프로필 만들기', href: '/onboarding' };
+const EDIT_PROFILE_ACTION = {
+  label: '프로필에 날짜 추가하기',
+  href: '/onboarding',
+};
+const EXIT_CHECK_ACTION = { label: '출국 정산 확인하기', href: '/exitcheck' };
 
-function answer(question: string): Omit<Message, 'id'> {
+const STATUS_LABEL: Record<StoredProfile['status'], string> = {
+  PRE_EMPLOYMENT: '취업 준비 중',
+  EMPLOYED: '근무 중',
+  SEPARATED: '퇴사함',
+  CHANGING: '이직 준비 중',
+};
+
+function answer(
+  question: string,
+  profile: StoredProfile | null,
+): Omit<Message, 'id'> {
   const has = (...keys: string[]) => keys.some((key) => question.includes(key));
 
+  if (!profile) {
+    return {
+      role: 'ai',
+      text: '아직 등록된 금융권리 프로필이 없어요. 국적·체류자격·근로 상태·주요 날짜를 등록하면 급여·세금·출국 정보를 바탕으로 답변해 드릴게요.',
+      action: PROFILE_ACTION,
+    };
+  }
+
+  const statusLabel = STATUS_LABEL[profile.status];
+
   if (has('출국', '귀국', '연금', '퇴직금')) {
+    if (profile.status === 'PRE_EMPLOYMENT') {
+      return {
+        role: 'ai',
+        text: '아직 취업 전이라 출국 정산 항목은 근무를 시작한 뒤에 의미가 있어요. 취업 후 다시 물어봐 주세요.',
+      };
+    }
+    if (!profile.exit) {
+      return {
+        role: 'ai',
+        text: '예상 출국일이 아직 등록되지 않았어요. 출국 예정일을 등록하면 출국만기보험, 귀국비용보험, 국민연금 반환일시금, 퇴직금 차액 4가지를 D-day와 함께 안내해 드려요.',
+        action: EDIT_PROFILE_ACTION,
+      };
+    }
+    const dd = dDay(profile.exit);
     return {
       role: 'ai',
-      text: '출국 전에는 출국만기보험, 귀국비용보험, 국민연금 반환일시금, 퇴직금 차액 4가지를 확인하면 됩니다. 지금은 예시 답변이며, 프로필을 등록하면 실제 데이터로 안내해 드려요.',
-      action: PROFILE_ACTION,
+      text:
+        dd >= 0
+          ? `예상 출국일(${formatKDate(profile.exit)})까지 D-${dd}입니다. 출국만기보험, 귀국비용보험, 국민연금 반환일시금, 퇴직금 차액 4가지를 순서대로 확인해 보세요.`
+          : `등록하신 예상 출국일(${formatKDate(profile.exit)})이 이미 지났어요. 출국만기보험, 귀국비용보험, 국민연금 반환일시금, 퇴직금 차액을 아직 못 받으셨다면 지금 확인해 보세요.`,
+      action: EXIT_CHECK_ACTION,
     };
   }
+
   if (has('연말정산', '세금', '환급', '공제')) {
+    if (!profile.entry) {
+      return {
+        role: 'ai',
+        text: '입국일이 아직 등록되지 않아 거주자 여부를 판단할 수 없어요. 입국일을 등록하면 연 183일 기준으로 거주자/비거주자 여부를 안내해 드려요.',
+        action: EDIT_PROFILE_ACTION,
+      };
+    }
+    const daysSinceEntry = -dDay(profile.entry);
+    const isResident = daysSinceEntry >= 183;
     return {
       role: 'ai',
-      text: '연말정산에서는 거주자 여부, 주택청약저축 소득공제, 19% 단일세율 특례 3가지를 확인하면 됩니다. 지금은 예시 답변이며, 프로필을 등록하면 실제 데이터로 안내해 드려요.',
-      action: PROFILE_ACTION,
+      text: isResident
+        ? `입국일(${formatKDate(profile.entry)}) 기준 ${daysSinceEntry}일째 체류 중이라 세법상 거주자로 볼 가능성이 높아요. 연말정산에서는 주택청약저축 소득공제, 19% 단일세율 특례 2가지를 비교해서 유리한 쪽을 확인해 보세요.`
+        : `입국일(${formatKDate(profile.entry)}) 기준 ${daysSinceEntry}일째 체류 중이에요. 183일(거주자 기준)까지 D-${183 - daysSinceEntry} 남았어요. 그 전까지는 19% 단일세율 특례를 우선 확인해 보세요.`,
     };
   }
+
+  if (has('이번', '왜 달라', '차이', '적게', '적었')) {
+    return {
+      role: 'ai',
+      text: profile.payday
+        ? `계약서·임금명세서·입금액 3중 대조 기능은 아직 준비 중이에요. 등록하신 급여일(매월 ${profile.payday}일) 기준으로 입금이 늦거나 금액이 다른지 먼저 확인해 보세요.`
+        : '급여일이 아직 등록되지 않았어요. 급여일을 등록하면 입금 지연이나 금액 차이를 더 정확히 안내해 드려요.',
+      action: profile.payday ? undefined : EDIT_PROFILE_ACTION,
+    };
+  }
+
   if (has('올해', '누적', '얼마', '총 급여', '지금까지')) {
+    if (profile.status === 'PRE_EMPLOYMENT') {
+      return {
+        role: 'ai',
+        text: '아직 취업 전이라 확인할 급여 기록이 없어요. 취업 후 급여일이 지나면 누적 급여를 계산해 드릴게요.',
+      };
+    }
     return {
       role: 'ai',
-      text: '급여 확인 기록이 쌓이면 올해 누적 급여를 계산해 드려요. 지금은 예시 답변입니다.',
-      action: PROFILE_ACTION,
+      text: `은행 계좌 연동 전이라 아직 실제 입금 내역을 불러올 수 없어요. ${profile.workplace ? `${profile.workplace}에서 ` : ''}매월 ${profile.payday || '등록된'} 일 급여일 기준으로 누적 급여를 계산하는 기능은 준비 중입니다.`,
     };
   }
+
   if (has('일정', '캘린더', '언제')) {
     return {
       role: 'ai',
-      text: '금융권리 캘린더에서 급여일과 세금·출국 준비 일정을 월별로 확인할 수 있어요. (준비 중인 기능입니다)',
+      text: profile.payday
+        ? `매월 ${profile.payday}일 급여일과 세금·출국 준비 일정을 한 캘린더에서 보여주는 기능은 준비 중이에요.`
+        : '금융권리 캘린더에서 급여일과 세금·출국 준비 일정을 월별로 확인할 수 있어요. (준비 중인 기능입니다)',
     };
   }
+
+  if (has('지금', '확인해야')) {
+    if (profile.status === 'PRE_EMPLOYMENT') {
+      return {
+        role: 'ai',
+        text: `현재 상태는 '${statusLabel}'이에요. 취업하면 근로계약서 내용과 첫 급여일부터 확인해 보세요.`,
+      };
+    }
+    if (profile.status === 'CHANGING') {
+      return {
+        role: 'ai',
+        text: `현재 상태는 '${statusLabel}'이에요. 이전 사업장에서 받을 정산이 남아있는지, 새 사업장 입사일이 확정됐는지부터 확인해 보세요.`,
+      };
+    }
+    if (profile.status === 'SEPARATED') {
+      const dd = profile.exit ? dDay(profile.exit) : null;
+      return {
+        role: 'ai',
+        text:
+          dd !== null
+            ? `현재 상태는 '${statusLabel}'이에요. 예상 출국일까지 D-${dd}, 출국 전 정산 4가지 항목을 확인해 보세요.`
+            : `현재 상태는 '${statusLabel}'이에요. 출국 전 정산 4가지 항목(출국만기보험·귀국비용보험·국민연금 반환일시금·퇴직금 차액)을 확인해 보세요.`,
+        action: EXIT_CHECK_ACTION,
+      };
+    }
+    return {
+      role: 'ai',
+      text: `현재 상태는 '${statusLabel}'${profile.payday ? `이고 급여일은 매월 ${profile.payday}일` : ''}이에요. 이번 급여일에 계약대로 입금됐는지부터 확인해 보세요.`,
+    };
+  }
+
   return {
     role: 'ai',
-    text: '아직 실제 데이터와 연동되지 않은 예시 답변이에요. 프로필을 등록하면 급여·세금·출국 정보를 바탕으로 답변해 드릴게요.',
-    action: PROFILE_ACTION,
+    text: `등록된 프로필(${profile.nationality} · ${profile.visa} · ${statusLabel}) 기준으로 답변드리고 싶은데, 급여·세금·출국 확인 기능은 아직 준비 중이에요. 추천 질문을 눌러보시겠어요?`,
   };
 }
 
@@ -105,7 +209,7 @@ export function ChatDock() {
     window.setTimeout(() => {
       setMessages((previous) => [
         ...previous,
-        { id: nextId('ai'), ...answer(question) },
+        { id: nextId('ai'), ...answer(question, readProfile()) },
       ]);
       setTyping(false);
       scrollRef.current?.scrollTo({

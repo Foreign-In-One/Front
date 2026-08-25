@@ -10,6 +10,7 @@ import {
 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useEffect, useMemo, useState } from 'react';
+import { saveProfile } from '@/lib/profile';
 
 type Status = 'PRE_EMPLOYMENT' | 'EMPLOYED' | 'SEPARATED' | 'CHANGING';
 type DateKey = 'entry' | 'workStart' | 'currentStart' | 'exit';
@@ -190,6 +191,12 @@ export function OnboardingFlow() {
   };
   const back = () =>
     safeIndex === 0 ? router.push('/') : setIndex(safeIndex - 1);
+
+  useEffect(() => {
+    if (done && values.status) {
+      saveProfile({ ...values, status: values.status });
+    }
+  }, [done, values]);
 
   if (done) {
     const status =
