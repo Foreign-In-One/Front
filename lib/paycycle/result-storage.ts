@@ -3,22 +3,52 @@ import type { TaxProfile, TaxRuleCard } from './taxcheck';
 export const RESULT_STORAGE_KEY = 'paycycle-results-v1';
 const USER_STORAGE_KEY = 'paycycle-user-id';
 
-export interface SavedTaxCheckResult {
+export type ResultKind = 'pay' | 'tax' | 'exit';
+
+interface SavedResultBase {
   id: string;
   userId: string;
-  kind: 'tax';
   createdAt: string;
   profileSignature: string;
+}
+
+export interface SavedPayCheckResult extends SavedResultBase {
+  kind: 'pay';
+  payPeriod: string;
+  workplace: string;
+  status?: string;
+  differenceAmount: number | null;
+  paidAmount: number | null;
+  findingCount?: number;
+}
+
+export interface SavedTaxCheckResult extends SavedResultBase {
+  kind: 'tax';
   year: number;
   yearlyPay: number;
   monthsRecorded: number;
   needsActionCount: number;
+  unknownCount?: number;
   applicableCount: number;
   totalCount: number;
   taxProfile: TaxProfile;
   employment: null;
   ruleVersion: 'tax-v1';
+  /** 이전 저장 기록에는 없을 수 있어 선택값으로 둡니다. */
+  cards?: TaxRuleCard[];
 }
+
+export interface SavedExitCheckResult extends SavedResultBase {
+  kind: 'exit';
+  departureDate: string | null;
+  readyCount: number;
+  totalCount: number;
+}
+
+export type SavedResult =
+  | SavedPayCheckResult
+  | SavedTaxCheckResult
+  | SavedExitCheckResult;
 
 export interface NewTaxCheckResult {
   year: number;
@@ -62,6 +92,53 @@ function readStoredResults(): unknown[] {
   }
 }
 
+function isSavedResult(value: unknown): value is SavedResult {
+  if (!value || typeof value !== 'object') return false;
+
+  const candidate = value as Record<string, unknown>;
+  return (
+    typeof candidate.id === 'string' &&
+    typeof candidate.userId === 'string' &&
+    typeof candidate.createdAt === 'string' &&
+    (candidate.kind === 'pay' ||
+      candidate.kind === 'tax' ||
+      candidate.kind === 'exit')
+  );
+}
+
+function writeStoredResults(records: SavedResult[]) {
+  window.localStorage.setItem(RESULT_STORAGE_KEY, JSON.stringify(records));
+}
+
+/** 현재 브라우저 사용자의 저장 결과를 최신순으로 반환합니다. */
+export function listSavedResults(): SavedResult[] {
+  if (typeof window === 'undefined') return [];
+
+  const userId = currentUserId();
+  return readStoredResults()
+    .filter(isSavedResult)
+    .filter((record) => record.userId === userId)
+    .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+}
+
+/** 현재 브라우저 사용자의 결과 한 건을 삭제합니다. */
+export function removeSavedResult(id: string): boolean {
+  if (typeof window === 'undefined') return false;
+
+  try {
+    const userId = currentUserId();
+    const records = readStoredResults().filter(isSavedResult);
+    writeStoredResults(
+      records.filter(
+        (record) => !(record.id === id && record.userId === userId),
+      ),
+    );
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 /**
  * Lovable 원본과 같은 `paycycle-results-v1` 키를 사용합니다.
  * 이후 `/records`와 `/dashboard`는 kind === "tax"인 항목을 읽으면 됩니다.
@@ -83,6 +160,9 @@ export function saveTaxCheckResult(
     needsActionCount: input.cards.filter(
       (card) => card.status === '추가 자료 필요',
     ).length,
+    unknownCount: input.cards.filter(
+      (card) => card.status === '현재 정보로 판단 불가',
+    ).length,
     applicableCount: input.cards.filter(
       (card) => card.status === '적용 가능성 있음',
     ).length,
@@ -90,6 +170,13 @@ export function saveTaxCheckResult(
     taxProfile: { ...input.taxProfile },
     employment: null,
     ruleVersion: 'tax-v1',
+    cards: input.cards.map((card) => ({
+      ...card,
+      confirmed: [...card.confirmed],
+      missing: [...card.missing],
+      nextActions: [...card.nextActions],
+      evidence: card.evidence.map((evidence) => ({ ...evidence })),
+    })),
   };
 
   try {
