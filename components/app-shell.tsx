@@ -6,6 +6,7 @@ import { CalendarClock, History, Home, Plane, Receipt, UserRound, Wallet } from 
 import type { ReactNode } from "react";
 import { ChatDock } from "@/components/chat-dock";
 import { LanguageSwitcher } from "@/components/language-switcher";
+import { DemoSyncButton } from "@/components/demo-sync-button";
 import { useT, type DictKey } from "@/i18n";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
@@ -37,14 +38,7 @@ export function AppShell({
             {subtitle ? <p className="mt-1 text-sm text-muted-foreground">{subtitle}</p> : null}
           </div>
           <div className="flex shrink-0 items-center gap-1">
-            <button
-              type="button"
-              onClick={() => toast.info(t("common.reading") || "기능 준비 중입니다.")}
-              aria-label={t("records.nav")}
-              className="rounded-xl p-2 text-muted-foreground transition-colors hover:text-primary"
-            >
-              <History className="size-5" />
-            </button>
+            <DemoSyncButton />
             <Link
               href="/profile"
               aria-label={t("profile.nav")}

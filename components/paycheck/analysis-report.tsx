@@ -274,33 +274,60 @@ export function AnalysisReport({
               {/* 다국어 사업주 질문 카드 */}
               {aiReport.messageForEmployer && (
                 <div className="rounded-3xl bg-gradient-to-br from-primary/10 via-info/10 to-accent/20 border border-primary/20 p-5 shadow-xs space-y-3">
-                  <div className="flex items-center justify-between">
+                  <div className="flex items-center justify-between flex-wrap gap-2">
                     <div className="flex items-center gap-2 text-xs font-extrabold text-primary">
                       <MessageSquareQuote className="size-4" />
                       <span>{t("pay.report.employerCardTitle")}</span>
                     </div>
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      className="rounded-2xl bg-card text-xs font-bold text-primary hover:bg-accent hover:text-accent-foreground border border-border/60 shadow-xs"
-                      onClick={() => {
-                        void navigator.clipboard.writeText(aiReport.messageForEmployer.korean);
-                        toast.success(t("pay.report.copySuccess"));
-                      }}
-                    >
-                      <Copy className="mr-1.5 size-3.5" />
-                      {t("pay.report.copyKorean")}
-                    </Button>
+                    <div className="flex items-center gap-1.5">
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="rounded-2xl bg-card text-xs font-bold text-primary hover:bg-accent hover:text-accent-foreground border border-border/60 shadow-xs h-8 px-3"
+                        onClick={() => {
+                          void navigator.clipboard.writeText(aiReport.messageForEmployer.korean);
+                          toast.success(t("pay.report.copySuccess"));
+                        }}
+                      >
+                        <Copy className="mr-1.5 size-3.5" />
+                        {t("pay.report.copyKorean")}
+                      </Button>
+                      {locale !== "ko" && aiReport.messageForEmployer.translated && (
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="rounded-2xl bg-card text-xs font-bold text-muted-foreground hover:text-foreground hover:bg-accent border border-border/60 shadow-xs h-8 px-3"
+                          onClick={() => {
+                            void navigator.clipboard.writeText(aiReport.messageForEmployer.translated);
+                            toast.success(t("pay.report.copyTranslatedSuccess"));
+                          }}
+                        >
+                          <Copy className="mr-1.5 size-3.5" />
+                          {t("pay.report.copyTranslated")}
+                        </Button>
+                      )}
+                    </div>
                   </div>
 
-                  <div className="rounded-2xl bg-card p-4 border border-border/50 space-y-2">
-                    <p className="text-xs leading-relaxed font-bold text-foreground">
-                      "{aiReport.messageForEmployer.korean}"
-                    </p>
-                    {locale !== "ko" && aiReport.messageForEmployer.translated && (
-                      <p className="border-t border-border/40 pt-2 text-[11px] leading-relaxed text-muted-foreground font-medium">
-                        🌐 {aiReport.messageForEmployer.translated}
+                  <div className="rounded-2xl bg-card p-4 border border-border/50 space-y-2.5">
+                    <div>
+                      <span className="text-[10px] font-black text-primary uppercase tracking-wider block mb-1">
+                        🇰🇷 한국어 (사업주 전달용)
+                      </span>
+                      <p className="text-xs leading-relaxed font-bold text-foreground bg-muted/40 rounded-xl p-2.5">
+                        "{aiReport.messageForEmployer.korean}"
                       </p>
+                    </div>
+
+                    {locale !== "ko" && aiReport.messageForEmployer.translated && (
+                      <div className="border-t border-border/40 pt-2.5">
+                        <span className="text-[10px] font-black text-muted-foreground uppercase tracking-wider block mb-1">
+                          🌐 모국어 번역 (내용 확인용)
+                        </span>
+                        <p className="text-xs leading-relaxed font-medium text-foreground bg-muted/40 rounded-xl p-2.5">
+                          "{aiReport.messageForEmployer.translated}"
+                        </p>
+                      </div>
                     )}
                   </div>
                 </div>
