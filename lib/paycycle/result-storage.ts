@@ -92,18 +92,63 @@ function readStoredResults(): unknown[] {
   }
 }
 
+function isStringArray(value: unknown): value is string[] {
+  return (
+    Array.isArray(value) && value.every((item) => typeof item === 'string')
+  );
+}
+
+function isTaxRuleCard(value: unknown): value is TaxRuleCard {
+  if (!value || typeof value !== 'object') return false;
+
+  const card = value as Record<string, unknown>;
+
+  return (
+    ['resident', 'housing', 'flat'].includes(String(card.id)) &&
+    typeof card.title === 'string' &&
+    [
+      '적용 가능성 있음',
+      '조건 미충족',
+      '추가 자료 필요',
+      '현재 정보로 판단 불가',
+    ].includes(String(card.status)) &&
+    ['possible', 'need', 'not', 'unknown'].includes(String(card.tone)) &&
+    typeof card.summary === 'string' &&
+    isStringArray(card.confirmed) &&
+    isStringArray(card.missing) &&
+    isStringArray(card.nextActions) &&
+    Array.isArray(card.evidence) &&
+    card.evidence.every((value) => {
+      if (!value || typeof value !== 'object') return false;
+
+      const evidence = value as Record<string, unknown>;
+      return (
+        typeof evidence.title === 'string' && typeof evidence.url === 'string'
+      );
+    })
+  );
+}
+
 function isSavedResult(value: unknown): value is SavedResult {
   if (!value || typeof value !== 'object') return false;
 
   const candidate = value as Record<string, unknown>;
-  return (
+
+  const hasBaseFields =
     typeof candidate.id === 'string' &&
     typeof candidate.userId === 'string' &&
-    typeof candidate.createdAt === 'string' &&
-    (candidate.kind === 'pay' ||
-      candidate.kind === 'tax' ||
-      candidate.kind === 'exit')
-  );
+    typeof candidate.createdAt === 'string';
+
+  if (!hasBaseFields) return false;
+
+  if (candidate.kind === 'tax') {
+    return (
+      candidate.cards === undefined ||
+      (Array.isArray(candidate.cards) && candidate.cards.every(isTaxRuleCard))
+    );
+  }
+
+  return candidate.kind === 'pay' || candidate.kind === 'exit';
 }
 
 function writeStoredResults(records: SavedResult[]) {
