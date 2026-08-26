@@ -347,13 +347,9 @@ export default function PayCheckPage() {
 
   const currentPaycheckId = useMemo(() => {
     if (activePaycheckId !== undefined) return activePaycheckId;
-    if (rec?.id) {
-      if (rec.id.startsWith("be-pay-")) {
-        const num = Number(rec.id.replace("be-pay-", ""));
-        if (!isNaN(num)) return num;
-      }
-      if (!isNaN(Number(rec.id))) return Number(rec.id);
-      return rec.id;
+    if (rec?.id && rec.id.startsWith("be-pay-")) {
+      const num = Number(rec.id.replace("be-pay-", ""));
+      if (!isNaN(num)) return num;
     }
     return undefined;
   }, [activePaycheckId, rec]);
@@ -472,11 +468,9 @@ export default function PayCheckPage() {
 
     const assignedId = backendPaycheckId
       ? `be-pay-${backendPaycheckId}`
-      : rec?.id ?? (period.includes("08") ? "be-pay-2" : "be-pay-1");
+      : rec?.id ?? uid("pay");
 
-    setActivePaycheckId(
-      backendPaycheckId ?? (assignedId.startsWith("be-pay-") ? Number(assignedId.replace("be-pay-", "")) : assignedId)
-    );
+    setActivePaycheckId(backendPaycheckId);
 
     const newRec: PayRecord = {
       id: assignedId,

@@ -23,7 +23,11 @@ import { Button } from "@/components/ui/button";
 import { useT } from "@/i18n";
 import { STATUS_LABEL, statusLabel } from "@/lib/paycycle/rule-engine";
 import type { PayFinding } from "@/lib/paycycle/types";
-import { fetchAiPaycheckAnalysis, type AiPaycheckReportDto } from "@/services/ai";
+import {
+  fetchAiPaycheckAnalysis,
+  generateLocalAiPaycheckAnalysis,
+  type AiPaycheckReportDto,
+} from "@/services/ai";
 
 interface AnalysisReportProps {
   paycheckId?: number | string;
@@ -49,26 +53,48 @@ export function AnalysisReport({
   useEffect(() => {
     let active = true;
     async function loadAiAnalysis() {
-      if (!finding || finding.status === "MATCH" || !paycheckId) {
+      if (!finding || finding.status === "MATCH") {
         setAiReport(null);
         return;
       }
-      setLoadingAi(true);
-      try {
-        const res = await fetchAiPaycheckAnalysis({
-          paycheckId,
+
+      if (paycheckId) {
+        setLoadingAi(true);
+        try {
+          const res = await fetchAiPaycheckAnalysis({
+            paycheckId,
+            finding,
+            period,
+            workplace,
+            locale,
+          });
+          if (active && res.data) {
+            setAiReport(res.data);
+          }
+        } catch (err) {
+          console.warn("AI Analysis loading error:", err);
+          if (active) {
+            const localRes = generateLocalAiPaycheckAnalysis({
+              finding,
+              period,
+              workplace,
+              locale,
+            });
+            setAiReport(localRes.data);
+          }
+        } finally {
+          if (active) setLoadingAi(false);
+        }
+      } else {
+        const localRes = generateLocalAiPaycheckAnalysis({
           finding,
           period,
           workplace,
           locale,
         });
-        if (active && res.data) {
-          setAiReport(res.data);
+        if (active) {
+          setAiReport(localRes.data);
         }
-      } catch (err) {
-        console.warn("AI Analysis loading error:", err);
-      } finally {
-        if (active) setLoadingAi(false);
       }
     }
     void loadAiAnalysis();

@@ -50,8 +50,17 @@ export async function fetchAiPaycheckAnalysis(payload: {
     console.warn("fetchAiPaycheckAnalysis error:", err);
   }
 
-  // Fallback
-  const diffWon = Math.abs(payload.finding.difference).toLocaleString("ko-KR") + "원";
+  return generateLocalAiPaycheckAnalysis(payload);
+}
+
+/** 로컬 룰 엔진 기반 AI 급여 대조 심층 진단 리포트 생성 (백엔드 미저장 로컬 분석용) */
+export function generateLocalAiPaycheckAnalysis(payload: {
+  finding: PayFinding;
+  period: string;
+  workplace?: string;
+  locale: UiLocale;
+}): { ok: boolean; isMock: boolean; data: AiPaycheckReportDto } {
+  const diffWon = payload.finding.difference ? `${Math.abs(payload.finding.difference).toLocaleString("ko-KR")}원` : "";
   const loc = payload.locale;
 
   if (loc === "vi") {
