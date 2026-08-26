@@ -272,27 +272,12 @@ export async function fetchAiPaycheckAnalysis(payload: {
   };
 }
 
-/** AI 어시스턴트 질문 */
+/** AI 어시스턴트 질문 (로컬 Rule/Intent 엔진으로 동작) */
 export async function askAssistant(
-  question: string,
-  context: string,
-  locale: UiLocale,
+  _question: string,
+  _context: string,
+  _locale: UiLocale,
 ): Promise<{ text: string | null; error: string | null }> {
-  try {
-    const res = await fetch("/api/chat", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ question, context, locale }),
-    });
-    if (res.ok) {
-      const json = await res.json();
-      if (json.text) {
-        return { text: json.text, error: null };
-      }
-    }
-  } catch (err) {
-    console.warn("askAssistant API error:", err);
-  }
   return { text: null, error: null };
 }
 
