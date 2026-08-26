@@ -41,26 +41,51 @@ export async function POST(req: Request) {
     // 0. 실제 Spring Boot 백엔드 explain API 연동 시도
     const backendBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8080";
     try {
-      // 8월(2026-08) 등 최신 paycheckId에 대해 explain API 호출
-      const paycheckId = period?.includes("08") ? 2 : 1;
+      const paycheckId = body.paycheckId;
+      if (!paycheckId) throw new Error("paycheckId is required");
+
+      const userId =
+        req.headers.get("x-user-id") ||
+        req.headers.get("x-demo-user-id") ||
+        body.userId ||
+        "1";
+
+      const headers: Record<string, string> = {
+        "Content-Type": "application/json",
+        "X-User-Id": String(userId),
+        "X-Demo-User-Id": String(userId),
+      };
+
+      const authHeader = req.headers.get("authorization");
+      if (authHeader) {
+        headers["Authorization"] = authHeader;
+      }
+
       const beRes = await fetch(`${backendBaseUrl}/api/paychecks/${paycheckId}/explain`, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "X-Demo-User-Id": "1",
-        },
+        signal: AbortSignal.timeout(10_000),
+        headers,
+        body: JSON.stringify({ finding, period, workplace, locale }),
       });
 
       if (beRes.ok) {
         const beJson = await beRes.json();
         if (beJson.success && beJson.data) {
           const d = beJson.data;
-          const diffWon = (finding?.difference ? Math.abs(finding.difference) : 120000).toLocaleString("ko-KR") + "원";
+          const diffWon = finding?.difference
+            ? `${Math.abs(finding.difference).toLocaleString("ko-KR")}원`
+            : "";
           const firstCard = d.employerQuestionCards?.[0];
 
           const report: AiPaycheckReportDto = {
-            headline: `실제 입금액과 명세서 간 ${diffWon} 차액 원인 분석`,
-            summary: d.summary || `임금명세서와 실제 통장 입금액 사이에 ${diffWon}의 차액이 확인되었습니다.`,
+            headline: diffWon
+              ? `실제 입금액과 명세서 간 ${diffWon} 차액 원인 분석`
+              : "실제 입금액과 명세서 간 차액 원인 분석",
+            summary:
+              d.summary ||
+              (diffWon
+                ? `임금명세서와 실제 통장 입금액 사이에 ${diffWon}의 차액이 확인되었습니다.`
+                : "임금명세서와 실제 통장 입금액 사이에 차액이 확인되었습니다."),
             causes: (d.reasons || []).map((r: string) => ({
               title: r,
               description: `확인된 사실: ${r}`,
@@ -79,8 +104,16 @@ export async function POST(req: Request) {
               urgency: idx === 0 ? "HIGH" : "MEDIUM",
             })),
             messageForEmployer: {
-              korean: firstCard?.koreanScript || `안녕하세요 사장님, 이번 달 급여 중 임금명세서 실지급액과 통장 입금액 사이에 ${diffWon}의 차이가 확인되어 연락드렸습니다. 혹시 추가로 공제된 항목이 있는지 확인 부탁드립니다.`,
-              translated: firstCard?.nativeScript || `Xin chào giám đốc, lương tháng 8 có chênh lệch ${diffWon} giữa phiếu lương và tiền vào tài khoản, nhờ giám đốc kiểm tra giúp tôi.`,
+              korean:
+                firstCard?.koreanScript ||
+                (diffWon
+                  ? `안녕하세요 사장님, 이번 달 급여 중 임금명세서 실지급액과 통장 입금액 사이에 ${diffWon}의 차이가 확인되어 연락드렸습니다. 혹시 추가로 공제된 항목이 있는지 확인 부탁드립니다.`
+                  : "안녕하세요 사장님, 이번 달 급여 중 임금명세서 실지급액과 통장 입금액 사이에 차이가 확인되어 연락드렸습니다. 혹시 추가로 공제된 항목이 있는지 확인 부탁드립니다."),
+              translated:
+                firstCard?.nativeScript ||
+                (diffWon
+                  ? `Xin chào giám đốc, lương có chênh lệch ${diffWon} giữa phiếu lương và tiền vào tài khoản, nhờ giám đốc kiểm tra giúp tôi.`
+                  : "Xin chào giám đốc, lương có sự chênh lệch giữa phiếu lương và tiền vào tài khoản, nhờ giám đốc kiểm tra giúp tôi."),
               language: locale,
             },
           };
@@ -181,37 +214,41 @@ export async function POST(req: Request) {
     }
 
     // 2. Fallback: PRD 및 법령 기준 정교한 고도화 AI 분석 엔진
-    const diffAmount = finding?.difference ? Math.abs(finding.difference) : 50000;
-    const diffWon = diffAmount.toLocaleString("ko-KR") + "원";
+    const diffAmount = finding?.difference ? Math.abs(finding.difference) : 0;
+    const diffWon = diffAmount > 0 ? `${diffAmount.toLocaleString("ko-KR")}원` : "";
     const findingId = finding?.id || "net";
 
     let report: AiPaycheckReportDto;
 
     function getEmployerMessageTranslation(id: string, diffStr: string, per: string, loc: string): string {
+      const diffVi = diffStr ? ` khoảng ${diffStr}` : "";
+      const diffZh = diffStr ? `约 ${diffStr}` : "";
+      const diffEn = diffStr ? ` of about ${diffStr}` : "";
+
       if (loc === "vi") {
         if (id === "net") {
-          return `Xin chào anh/chị, cảm ơn anh/chị đã chuyển lương ${per || "tháng này"}. Tôi thấy có sự chênh lệch khoảng ${diffStr} giữa số tiền thực lĩnh trên phiếu lương và số tiền thực tế nhận vào tài khoản. Nhờ anh/chị kiểm tra giúp tôi xem có khoản khấu trừ nào bổ sung không ạ. Tôi xin cảm ơn!`;
+          return `Xin chào anh/chị, cảm ơn anh/chị đã chuyển lương ${per || "tháng này"}. Tôi thấy có sự chênh lệch${diffVi} giữa số tiền thực lĩnh trên phiếu lương và số tiền thực tế nhận vào tài khoản. Nhờ anh/chị kiểm tra giúp tôi xem có khoản khấu trừ nào bổ sung không ạ. Tôi xin cảm ơn!`;
         }
         if (id === "base") {
-          return `Xin chào anh/chị. Có sự chênh lệch ${diffStr} giữa mức lương cơ bản trong hợp đồng và phiếu lương tháng này. Nhờ anh/chị giải thích giúp tôi cách tính này được không ạ?`;
+          return `Xin chào anh/chị. Có sự chênh lệch${diffVi} giữa mức lương cơ bản trong hợp đồng và phiếu lương tháng này. Nhờ anh/chị giải thích giúp tôi cách tính này được không ạ?`;
         }
         return `Xin chào anh/chị. Tôi muốn hỏi về chi tiết lương tháng này. Khi nào thuận tiện nhờ anh/chị kiểm tra giúp tôi. Tôi xin cảm ơn.`;
       }
       if (loc === "zh") {
         if (id === "net") {
-          return `老板您好，感谢您发放${per || "本月"}工资。经核对发现，工资明细中的实发金额与银行实际到账金额相差约 ${diffStr}。想请您帮忙确认是否有其他扣除项目，非常感谢！`;
+          return `老板您好，感谢您发放${per || "本月"}工资。经核对发现，工资明细中的实发金额与银行实际到账金额相差 ${diffZh}。想请您帮忙确认是否有其他扣除项目，非常感谢！`;
         }
         if (id === "base") {
-          return `老板您好，合同中的基本工资与本月工资明细的基本工资相差 ${diffStr}。想向您请教一下具体的计算标准，谢谢！`;
+          return `老板您好，合同中的基本工资与本月工资明细的基本工资相差 ${diffZh}。想向您请教一下具体的计算标准，谢谢！`;
         }
         return `老板您好，我想确认一下本月工资的具体明细，方便时请您帮忙看一下，谢谢！`;
       }
       if (loc === "en") {
         if (id === "net") {
-          return `Hello, thank you for sending this month's salary (${per || "this period"}). I noticed a difference of about ${diffStr} between the payslip net amount and the actual bank transfer. Could you please let me know if there was any additional deduction? Thank you!`;
+          return `Hello, thank you for sending this month's salary (${per || "this period"}). I noticed a difference${diffEn} between the payslip net amount and the actual bank transfer. Could you please let me know if there was any additional deduction? Thank you!`;
         }
         if (id === "base") {
-          return `Hello. There is a difference of ${diffStr} between the base salary in my contract and this month's payslip. Could you please explain how this was calculated?`;
+          return `Hello. There is a difference${diffEn} between the base salary in my contract and this month's payslip. Could you please explain how this was calculated?`;
         }
         return `Hello. I would like to check about my paycheck details for this month. Please let me know when you have time. Thank you.`;
       }
@@ -587,9 +624,17 @@ export async function POST(req: Request) {
     } else {
       // 한국어 (ko)
       if (findingId === "net") {
+        const leftDetail = finding?.left?.amount != null ? `(${won(finding.left.amount)})` : "";
+        const rightDetail = finding?.right?.amount != null ? `(${won(finding.right.amount)})` : "";
+        const diffPhrase = diffWon ? ` 사이에 ${diffWon}의 차액이` : "에 차이가";
+
         report = {
-          headline: `실제 입금액과 임금명세서 실지급액 간 ${diffWon} 차액 정밀 진단`,
-          summary: `임금명세서에 기재된 차인지급액(실지급액)과 실제 은행 계좌 입금액 사이에 ${diffWon}의 부족 차액이 감지되었습니다. 사전에 서면 동의되지 않은 임의 공제, 연장수당 정산 착오, 또는 분할 송금 여부에 대한 노무학적 사실 확인이 필요합니다.`,
+          headline: diffWon
+            ? `실제 입금액과 임금명세서 실지급액 간 ${diffWon} 차액 정밀 진단`
+            : "실제 입금액과 임금명세서 실지급액 간 차액 정밀 진단",
+          summary: diffWon
+            ? `임금명세서에 기재된 차인지급액(실지급액)과 실제 은행 계좌 입금액 사이에 ${diffWon}의 부족 차액이 감지되었습니다. 사전에 서면 동의되지 않은 임의 공제, 연장수당 정산 착오, 또는 분할 송금 여부에 대한 노무학적 사실 확인이 필요합니다.`
+            : "임금명세서에 기재된 차인지급액(실지급액)과 실제 은행 계좌 입금액 사이에 부족 차액이 감지되었습니다. 사전에 서면 동의되지 않은 임의 공제, 연장수당 정산 착오, 또는 분할 송금 여부에 대한 노무학적 사실 확인이 필요합니다.",
           causes: [
             {
               title: "임금명세서 미기재 추가 공제 가능성",
@@ -622,7 +667,9 @@ export async function POST(req: Request) {
             {
               step: 1,
               title: "1단계: 팩트 확인 및 증빙 자료 확보",
-              action: "계약서 기본급과 명세서 실지급액, 통장 실입금액 간 120,000원 차액을 확인하고 명세서와 통장 내역서를 캡처해 둡니다.",
+              action: diffWon
+                ? `계약서 기본급과 명세서 실지급액, 통장 실입금액 간 ${diffWon} 차액을 확인하고 명세서와 통장 내역서를 캡처해 둡니다.`
+                : "계약서 기본급과 명세서 실지급액, 통장 실입금액 간 차액을 확인하고 명세서와 통장 내역서를 캡처해 둡니다.",
               urgency: "HIGH",
             },
             {
@@ -645,7 +692,7 @@ export async function POST(req: Request) {
             },
           ],
           messageForEmployer: {
-            korean: `안녕하세요 사장님, ${period || "이번 달"} 급여 입금해 주셔서 진심으로 감사드립니다. 급여 통장을 확인해 보았는데, 임금명세서 상의 실지급액(${won(2380000)})과 통장 입금액(${won(2260000)}) 사이에 ${diffWon}의 차액이 확인되어 연락드렸습니다. 혹시 추가로 공제된 항목이 있거나 계산 과정에서 확인이 필요한 부분이 있는지 알려주시면 감사하겠습니다. 늘 배려해 주셔서 감사합니다!`,
+            korean: `안녕하세요 사장님, ${period || "이번 달"} 급여 입금해 주셔서 진심으로 감사드립니다. 급여 통장을 확인해 보았는데, 임금명세서 상의 실지급액${leftDetail}과 통장 입금액${rightDetail}${diffPhrase} 확인되어 연락드렸습니다. 혹시 추가로 공제된 항목이 있거나 계산 과정에서 확인이 필요한 부분이 있는지 알려주시면 감사하겠습니다. 늘 배려해 주셔서 감사합니다!`,
             translated: getEmployerMessageTranslation("net", diffWon, period, locale),
             language: locale,
           },

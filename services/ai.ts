@@ -28,6 +28,7 @@ export async function translateForEmployer(
 
 /** AI Agent 급여 대조 심층 진단 분석 요청 */
 export async function fetchAiPaycheckAnalysis(payload: {
+  paycheckId?: number | string;
   finding: PayFinding;
   period: string;
   workplace?: string;

@@ -26,6 +26,7 @@ import type { PayFinding } from "@/lib/paycycle/types";
 import { fetchAiPaycheckAnalysis, type AiPaycheckReportDto } from "@/services/ai";
 
 interface AnalysisReportProps {
+  paycheckId?: number | string;
   finding?: PayFinding | null;
   period: string;
   workplace?: string;
@@ -33,6 +34,7 @@ interface AnalysisReportProps {
 }
 
 export function AnalysisReport({
+  paycheckId,
   finding,
   period,
   workplace,
@@ -41,6 +43,10 @@ export function AnalysisReport({
   const { t, locale } = useT();
   const [aiReport, setAiReport] = useState<AiPaycheckReportDto | null>(null);
   const [loadingAi, setLoadingAi] = useState(false);
+
+  const findingId = finding?.id;
+  const findingStatus = finding?.status;
+  const findingDiff = finding?.difference;
 
   useEffect(() => {
     let active = true;
@@ -52,6 +58,7 @@ export function AnalysisReport({
       setLoadingAi(true);
       try {
         const res = await fetchAiPaycheckAnalysis({
+          paycheckId,
           finding,
           period,
           workplace,
@@ -70,7 +77,7 @@ export function AnalysisReport({
     return () => {
       active = false;
     };
-  }, [finding, period, workplace, locale]);
+  }, [paycheckId, findingId, findingStatus, findingDiff, period, workplace, locale]);
 
   if (!finding) return null;
 

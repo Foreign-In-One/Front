@@ -300,6 +300,50 @@ export default function PayCheckPage() {
     return null;
   }, [analysis]);
 
+  const dialogFinding: PayFinding | null = useMemo(() => {
+    if (!selectedRecord || !selectedRecord.analysis) return null;
+    return (
+      selectedRecord.analysis.findings?.[0] ?? {
+        id: "match",
+        status: selectedRecord.analysis.overallStatus,
+        title: `${monthLabel(selectedRecord.period)} 급여 3중 대조 완료`,
+        fact: `실입금액 ${selectedRecord.paidAmount ? won(selectedRecord.paidAmount) : "정상"} 확인`,
+        standard: "",
+        limitation: "",
+        nextActions: [],
+        comparison: "",
+        left: { label: "", amount: 0 },
+        right: { label: "", amount: 0 },
+        difference: 0,
+        requiredEvidence: [],
+        sources: [],
+        evidence: [],
+      }
+    );
+  }, [selectedRecord]);
+
+  const depositNetPay = docs.deposit?.fields.netPay;
+  const resultFinding: PayFinding | null = useMemo(() => {
+    if (finding) return finding;
+    if (!analysis) return null;
+    return {
+      id: "match",
+      status: analysis.overallStatus,
+      title: `${monthLabel(period)} 급여 3중 대조 완료`,
+      fact: `실입금액 ${depositNetPay ? won(depositNetPay) : "정상"} 확인`,
+      standard: "",
+      limitation: "",
+      nextActions: [],
+      comparison: "",
+      left: { label: "", amount: 0 },
+      right: { label: "", amount: 0 },
+      difference: 0,
+      requiredEvidence: [],
+      sources: [],
+      evidence: [],
+    };
+  }, [finding, analysis, period, depositNetPay]);
+
   if (!hydrated) {
     return (
       <AppShell title={t("pay.title")}>
@@ -348,6 +392,50 @@ export default function PayCheckPage() {
       };
     });
   };
+
+  const manualDrawer = (
+    <Drawer open={editingKind !== null} onOpenChange={(open) => !open && setEditingKind(null)}>
+      <DrawerContent className="p-5">
+        <DrawerHeader>
+          <DrawerTitle>{editingKind && t(DOC_META[editingKind].labelKey)}</DrawerTitle>
+          <DrawerDescription>{t("common.manualInput")}</DrawerDescription>
+        </DrawerHeader>
+        {editingKind && (
+          <div className="space-y-3 pt-2">
+            {Object.keys(FIELD_LABEL).map((fKey) => {
+              const k = fKey as keyof Omit<DocFields, "period">;
+              const val = docs[editingKind]?.fields[k];
+              return (
+                <div key={k} className="flex items-center justify-between gap-3">
+                  <span className="text-xs font-semibold text-muted-foreground">
+                    {FIELD_LABEL[k]}
+                  </span>
+                  <Input
+                    type={k.includes("Date") || k.includes("Day") ? "text" : "number"}
+                    value={val ?? ""}
+                    onChange={(e) =>
+                      updateField(
+                        editingKind,
+                        k,
+                        e.target.value ? (k.includes("Date") ? e.target.value : Number(e.target.value)) : null
+                      )
+                    }
+                    className="w-48 text-right text-xs font-bold rounded-2xl border border-input bg-background shadow-xs focus-visible:ring-2 focus-visible:ring-ring"
+                  />
+                </div>
+              );
+            })}
+            <Button
+              className="mt-4 w-full rounded-2xl bg-gradient-to-r from-primary to-[#1D4A88] text-primary-foreground font-bold shadow-md shadow-primary/20"
+              onClick={() => setEditingKind(null)}
+            >
+              {t("common.done")}
+            </Button>
+          </div>
+        )}
+      </DrawerContent>
+    </Drawer>
+  );
 
   const runAnalysis = () => {
     setAnalyzing(true);
@@ -510,24 +598,14 @@ export default function PayCheckPage() {
             {selectedRecord && selectedRecord.analysis && (
               <div className="space-y-4 pt-2">
                 <AnalysisReport
-                  finding={
-                    selectedRecord.analysis.findings?.[0] ?? {
-                      id: "match",
-                      status: selectedRecord.analysis.overallStatus,
-                      title: `${monthLabel(selectedRecord.period)} 급여 3중 대조 완료`,
-                      fact: `실입금액 ${selectedRecord.paidAmount ? won(selectedRecord.paidAmount) : "정상"} 확인`,
-                      standard: "",
-                      limitation: "",
-                      nextActions: [],
-                      comparison: "",
-                      left: { label: "", amount: 0 },
-                      right: { label: "", amount: 0 },
-                      difference: 0,
-                      requiredEvidence: [],
-                      sources: [],
-                      evidence: [],
-                    }
+                  paycheckId={
+                    selectedRecord.id.startsWith("be-pay-")
+                      ? Number(selectedRecord.id.replace("be-pay-", ""))
+                      : !isNaN(Number(selectedRecord.id))
+                      ? Number(selectedRecord.id)
+                      : undefined
                   }
+                  finding={dialogFinding}
                   period={selectedRecord.period}
                   workplace={selectedRecord.workplace}
                 />
@@ -563,6 +641,7 @@ export default function PayCheckPage() {
             )}
           </DialogContent>
         </Dialog>
+        {manualDrawer}
       </AppShell>
     );
   }
@@ -689,6 +768,7 @@ export default function PayCheckPage() {
             )}
           </div>
         </WizardStep>
+        {manualDrawer}
       </AppShell>
     );
   }
@@ -804,6 +884,7 @@ export default function PayCheckPage() {
             </div>
           )}
         </WizardStep>
+        {manualDrawer}
       </AppShell>
     );
   }
@@ -821,6 +902,7 @@ export default function PayCheckPage() {
             {t("pay.analyzingDesc")}
           </p>
         </div>
+        {manualDrawer}
       </AppShell>
     );
   }
@@ -845,27 +927,7 @@ export default function PayCheckPage() {
 
         {/* AI 심층 분석 리포트 */}
         <AnalysisReport
-          finding={
-            finding ??
-            (analysis
-              ? {
-                  id: "match",
-                  status: analysis.overallStatus,
-                  title: `${monthLabel(period)} 급여 3중 대조 완료`,
-                  fact: `실입금액 ${docs.deposit?.fields.netPay ? won(docs.deposit.fields.netPay) : "정상"} 확인`,
-                  standard: "",
-                  limitation: "",
-                  nextActions: [],
-                  comparison: "",
-                  left: { label: "", amount: 0 },
-                  right: { label: "", amount: 0 },
-                  difference: 0,
-                  requiredEvidence: [],
-                  sources: [],
-                  evidence: [],
-                }
-              : null)
-          }
+          finding={resultFinding}
           period={period}
           workplace={state.employment?.workplace}
         />
@@ -889,47 +951,7 @@ export default function PayCheckPage() {
         )}
       </div>
 
-      <Drawer open={editingKind !== null} onOpenChange={(open) => !open && setEditingKind(null)}>
-        <DrawerContent className="p-5">
-          <DrawerHeader>
-            <DrawerTitle>{editingKind && t(DOC_META[editingKind].labelKey)}</DrawerTitle>
-            <DrawerDescription>{t("common.manualInput")}</DrawerDescription>
-          </DrawerHeader>
-          {editingKind && (
-            <div className="space-y-3 pt-2">
-              {Object.keys(FIELD_LABEL).map((fKey) => {
-                const k = fKey as keyof Omit<DocFields, "period">;
-                const val = docs[editingKind]?.fields[k];
-                return (
-                  <div key={k} className="flex items-center justify-between gap-3">
-                    <span className="text-xs font-semibold text-muted-foreground">
-                      {FIELD_LABEL[k]}
-                    </span>
-                    <Input
-                      type={k.includes("Date") || k.includes("Day") ? "text" : "number"}
-                      value={val ?? ""}
-                      onChange={(e) =>
-                        updateField(
-                          editingKind,
-                          k,
-                          e.target.value ? (k.includes("Date") ? e.target.value : Number(e.target.value)) : null
-                        )
-                      }
-                      className="w-48 text-right text-xs font-bold rounded-2xl border border-input bg-background shadow-xs focus-visible:ring-2 focus-visible:ring-ring"
-                    />
-                  </div>
-                );
-              })}
-              <Button
-                className="mt-4 w-full rounded-2xl bg-gradient-to-r from-primary to-[#1D4A88] text-primary-foreground font-bold shadow-md shadow-primary/20"
-                onClick={() => setEditingKind(null)}
-              >
-                {t("common.done")}
-              </Button>
-            </div>
-          )}
-        </DrawerContent>
-      </Drawer>
+      {manualDrawer}
     </AppShell>
   );
 }
