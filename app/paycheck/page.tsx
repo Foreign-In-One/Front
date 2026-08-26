@@ -48,6 +48,7 @@ import type {
 } from "@/lib/paycycle/types";
 import { formatKDate, monthLabel, periodOf, uid, won } from "@/lib/paycycle/format";
 import { readDocument } from "@/services/ocr";
+import { analyzePaycheckApi } from "@/services/api";
 import { useT } from "@/i18n";
 
 const DOC_ORDER: DocKind[] = ["contract", "statement", "deposit"];
@@ -312,7 +313,7 @@ export default function PayCheckPage() {
     const reader = new FileReader();
     reader.onload = async (e) => {
       const dataUrl = e.target?.result as string;
-      const res = await readDocument({ kind, dataUrl, period });
+      const res = await readDocument({ kind, file, dataUrl, period });
       setDocs((prev) => ({
         ...prev,
         [kind]: {
@@ -333,25 +334,6 @@ export default function PayCheckPage() {
       }
     };
     reader.readAsDataURL(file);
-  };
-
-  const handleMock = async (kind: DocKind) => {
-    setReading((p) => ({ ...p, [kind]: true }));
-    const res = await readDocument({ kind, dataUrl: "", period, useMock: true });
-    setDocs((prev) => ({
-      ...prev,
-      [kind]: {
-        kind,
-        source: "sample",
-        fileName: `${kind}-sample.png`,
-        fields: res.fields,
-        confirmed: true,
-        masked: false,
-        note: res.message,
-      },
-    }));
-    setReading((p) => ({ ...p, [kind]: false }));
-    toast.success(res.message);
   };
 
   const updateField = (kind: DocKind, key: keyof DocFields, val: any) => {
@@ -387,6 +369,10 @@ export default function PayCheckPage() {
       };
 
       upsertPayRecord(newRec);
+
+      void analyzePaycheckApi({
+        payPeriod: period,
+      });
 
       void saveResult({
         kind: "pay",
@@ -659,16 +645,7 @@ export default function PayCheckPage() {
 
               <Button
                 variant="outline"
-                className="h-11 rounded-2xl border border-input bg-card px-4 text-xs font-bold shadow-xs hover:bg-accent hover:text-accent-foreground transition-all"
-                onClick={() => void handleMock(currentKind)}
-              >
-                <Sparkles className="mr-1.5 size-4 text-info" />
-                {t("common.mockBadge")}
-              </Button>
-
-              <Button
-                variant="ghost"
-                className="h-11 rounded-2xl text-xs font-bold text-muted-foreground hover:text-foreground"
+                className="h-11 rounded-2xl text-xs font-bold border border-input bg-card shadow-xs hover:bg-accent hover:text-accent-foreground"
                 onClick={() => setEditingKind(currentKind)}
               >
                 {t("common.manualInput")}
@@ -688,10 +665,26 @@ export default function PayCheckPage() {
               </div>
             )}
 
-            {currentDoc?.note && !isReading && (
-              <div className="rounded-2xl bg-muted/60 p-4 text-xs font-semibold leading-relaxed text-foreground shadow-xs">
-                <p className="font-bold text-primary mb-1">AI 판독 결과:</p>
-                {currentDoc.note}
+            {isDone && !isReading && (
+              <div className="rounded-2xl bg-primary/5 border border-primary/20 p-4 text-xs font-semibold leading-relaxed text-foreground shadow-xs space-y-1">
+                <p className="font-extrabold text-primary flex items-center gap-1.5">
+                  <CheckCircle2 className="size-4 text-primary" />
+                  {currentKind === "contract" &&
+                    t("pay.doc.extractedContract", {
+                      amount: won(currentDoc?.fields.basePay ?? 0),
+                    })}
+                  {currentKind === "statement" &&
+                    t("pay.doc.extractedStatement", {
+                      amount: won(currentDoc?.fields.netPay ?? currentDoc?.fields.basePay ?? 0),
+                    })}
+                  {currentKind === "deposit" &&
+                    t("pay.doc.extractedDeposit", {
+                      amount: won(currentDoc?.fields.netPay ?? 0),
+                    })}
+                </p>
+                {currentDoc?.note && (
+                  <p className="text-[11px] text-muted-foreground pt-0.5">{currentDoc.note}</p>
+                )}
               </div>
             )}
           </div>
@@ -705,25 +698,6 @@ export default function PayCheckPage() {
     const confirmedCount = DOC_ORDER.filter(
       (k) => Boolean(docs[k]?.fields.basePay || docs[k]?.fields.netPay)
     ).length;
-
-    const handleAllMock = async () => {
-      for (const k of DOC_ORDER) {
-        const res = await readDocument({ kind: k, dataUrl: "", period, useMock: true });
-        setDocs((prev) => ({
-          ...prev,
-          [k]: {
-            kind: k,
-            source: "sample",
-            fileName: `${k}-sample.png`,
-            fields: res.fields,
-            confirmed: true,
-            masked: false,
-            note: res.message,
-          },
-        }));
-      }
-      toast.success(t("common.done"));
-    };
 
     return (
       <AppShell title={t("pay.title")} subtitle={monthLabel(period)}>
@@ -758,11 +732,10 @@ export default function PayCheckPage() {
 
                 <Button
                   variant="outline"
-                  onClick={() => void handleAllMock()}
+                  onClick={() => setEditingKind("contract")}
                   className="w-full h-12 rounded-2xl border border-input bg-card font-bold shadow-xs hover:bg-accent"
                 >
-                  <Sparkles className="mr-2 size-4 text-info" />
-                  {t("pay.noDocs.useMock")}
+                  {t("common.manualInput")}
                 </Button>
               </div>
 
@@ -772,11 +745,20 @@ export default function PayCheckPage() {
             </div>
           ) : (
             <div className="space-y-3.5">
+              <div className="rounded-2xl bg-muted/60 p-3.5 text-[11px] font-semibold text-muted-foreground">
+                {t("pay.doc.monthlyNotice")}
+              </div>
+
               {DOC_ORDER.map((kind) => {
                 const meta = DOC_META[kind];
                 const doc = docs[kind];
                 const Icon = meta.icon;
-                const val = doc?.fields.netPay ?? doc?.fields.basePay;
+                const val =
+                  kind === "contract"
+                    ? doc?.fields.basePay
+                    : kind === "statement"
+                    ? doc?.fields.netPay ?? doc?.fields.basePay
+                    : doc?.fields.netPay;
 
                 return (
                   <div
@@ -790,13 +772,24 @@ export default function PayCheckPage() {
                       <div>
                         <p className="text-xs font-bold text-foreground">{t(meta.labelKey)}</p>
                         <p className="text-[11px] text-muted-foreground">
-                          {doc?.note ? t("pay.confirmed") : t("pay.unconfirmed")}
+                          {doc?.confirmed ? t("pay.confirmed") : t("pay.unconfirmed")}
                         </p>
                       </div>
                     </div>
-                    <span className="text-sm font-black text-primary">
-                      {val ? won(val) : "-"}
-                    </span>
+
+                    <div className="flex items-center gap-3">
+                      <span className="text-sm font-black text-primary">
+                        {val ? won(val) : "-"}
+                      </span>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="h-8 rounded-xl px-2 text-[11px] font-bold text-muted-foreground hover:text-primary hover:bg-accent"
+                        onClick={() => setEditingKind(kind)}
+                      >
+                        {t("common.edit")}
+                      </Button>
+                    </div>
                   </div>
                 );
               })}
