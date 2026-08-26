@@ -75,6 +75,9 @@ export default function DashboardPage() {
     Boolean(latestTax) ||
     payResults.some((result) => result.paidAmount !== null);
   const summaryYear = latestTax?.year ?? new Date().getFullYear();
+  const paySummaryLabel = latestTax
+    ? `${summaryYear}년 확인된 급여`
+    : '저장된 급여 합계';
   const needsReviewCount = latestTax ? taxReviewCount(latestTax) : 0;
 
   return (
@@ -117,7 +120,7 @@ export default function DashboardPage() {
             >
               <div className={styles.payHeroTop}>
                 <div>
-                  <p id="yearly-pay-title">{summaryYear}년 확인된 급여</p>
+                  <p id="yearly-pay-title">{paySummaryLabel}</p>
                   <strong>
                     {hasPaySummary ? formatWon(yearlyPay) : '아직 집계 전'}
                   </strong>
