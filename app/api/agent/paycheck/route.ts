@@ -36,14 +36,18 @@ export interface AiPaycheckReportDto {
 export async function POST(req: Request) {
   try {
     const body = await req.json();
-    const { finding, period, workplace, locale = "ko" } = body;
+    const { finding, period, workplace, locale = "ko", paycheckId } = body;
+
+    if (!paycheckId) {
+      return NextResponse.json(
+        { ok: false, message: "paycheckId is required for AI paycheck analysis" },
+        { status: 400 }
+      );
+    }
 
     // 0. 실제 Spring Boot 백엔드 explain API 연동 시도
     const backendBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8080";
     try {
-      const paycheckId = body.paycheckId;
-      if (!paycheckId) throw new Error("paycheckId is required");
-
       const userId =
         req.headers.get("x-user-id") ||
         req.headers.get("x-demo-user-id") ||

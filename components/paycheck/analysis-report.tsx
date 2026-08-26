@@ -44,14 +44,12 @@ export function AnalysisReport({
   const [aiReport, setAiReport] = useState<AiPaycheckReportDto | null>(null);
   const [loadingAi, setLoadingAi] = useState(false);
 
-  const findingId = finding?.id;
-  const findingStatus = finding?.status;
-  const findingDiff = finding?.difference;
+  const findingKey = finding ? JSON.stringify(finding) : "";
 
   useEffect(() => {
     let active = true;
     async function loadAiAnalysis() {
-      if (!finding || finding.status === "MATCH") {
+      if (!finding || finding.status === "MATCH" || !paycheckId) {
         setAiReport(null);
         return;
       }
@@ -77,7 +75,7 @@ export function AnalysisReport({
     return () => {
       active = false;
     };
-  }, [paycheckId, findingId, findingStatus, findingDiff, period, workplace, locale]);
+  }, [paycheckId, findingKey, period, workplace, locale]);
 
   if (!finding) return null;
 

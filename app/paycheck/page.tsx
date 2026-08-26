@@ -245,6 +245,7 @@ export default function PayCheckPage() {
   const [step, setStep] = useState<number>(-1);
   const [period, setPeriod] = useState(() => periodOf(new Date()));
   const [editingKind, setEditingKind] = useState<DocKind | null>(null);
+  const [activePaycheckId, setActivePaycheckId] = useState<number | string | undefined>(undefined);
 
   // 이전 기록 상세 보기 다이얼로그 모달 상태
   const [selectedRecord, setSelectedRecord] = useState<PayRecord | null>(null);
@@ -344,6 +345,19 @@ export default function PayCheckPage() {
     };
   }, [finding, analysis, period, depositNetPay]);
 
+  const currentPaycheckId = useMemo(() => {
+    if (activePaycheckId !== undefined) return activePaycheckId;
+    if (rec?.id) {
+      if (rec.id.startsWith("be-pay-")) {
+        const num = Number(rec.id.replace("be-pay-", ""));
+        if (!isNaN(num)) return num;
+      }
+      if (!isNaN(Number(rec.id))) return Number(rec.id);
+      return rec.id;
+    }
+    return undefined;
+  }, [activePaycheckId, rec]);
+
   if (!hydrated) {
     return (
       <AppShell title={t("pay.title")}>
@@ -437,46 +451,60 @@ export default function PayCheckPage() {
     </Drawer>
   );
 
-  const runAnalysis = () => {
+  const runAnalysis = async () => {
     setAnalyzing(true);
     setStep(4);
-    setTimeout(() => {
-      const result = analyzePaycheck(docs, state.employment, period);
-      setAnalysis(result);
-      setAnalyzing(false);
 
-      const recordId = rec?.id ?? uid("pay");
-      const newRec: PayRecord = {
-        id: recordId,
-        period,
-        workplace: state.employment?.workplace ?? "",
-        checkedAt: new Date().toISOString().slice(0, 10),
-        paidAmount: docs.deposit?.fields.netPay ?? null,
-        documents: docs,
-        analysis: result,
-      };
+    const result = analyzePaycheck(docs, state.employment, period);
+    setAnalysis(result);
 
-      upsertPayRecord(newRec);
-
-      void analyzePaycheckApi({
+    let backendPaycheckId: number | undefined;
+    try {
+      const beRes = await analyzePaycheckApi({
         payPeriod: period,
       });
+      if (beRes?.paycheck?.paycheckId) {
+        backendPaycheckId = beRes.paycheck.paycheckId;
+      }
+    } catch (err) {
+      console.warn("analyzePaycheckApi call failed:", err);
+    }
 
-      void saveResult({
-        kind: "pay",
-        payPeriod: period,
-        workplace: state.employment?.workplace ?? "",
-        status: result.overallStatus,
-        differenceAmount: result.findings[0]?.difference ?? null,
-        paidAmount: docs.deposit?.fields.netPay ?? null,
-        findingCount: result.findings.length,
-        documents: docs,
-        employment: state.employment,
-      });
+    const assignedId = backendPaycheckId
+      ? `be-pay-${backendPaycheckId}`
+      : rec?.id ?? (period.includes("08") ? "be-pay-2" : "be-pay-1");
 
-      toast.success(t("pay.savedToast"));
-      setStep(5);
-    }, 800);
+    setActivePaycheckId(
+      backendPaycheckId ?? (assignedId.startsWith("be-pay-") ? Number(assignedId.replace("be-pay-", "")) : assignedId)
+    );
+
+    const newRec: PayRecord = {
+      id: assignedId,
+      period,
+      workplace: state.employment?.workplace ?? "",
+      checkedAt: new Date().toISOString().slice(0, 10),
+      paidAmount: docs.deposit?.fields.netPay ?? null,
+      documents: docs,
+      analysis: result,
+    };
+
+    upsertPayRecord(newRec);
+
+    void saveResult({
+      kind: "pay",
+      payPeriod: period,
+      workplace: state.employment?.workplace ?? "",
+      status: result.overallStatus,
+      differenceAmount: result.findings[0]?.difference ?? null,
+      paidAmount: docs.deposit?.fields.netPay ?? null,
+      findingCount: result.findings.length,
+      documents: docs,
+      employment: state.employment,
+    });
+
+    setAnalyzing(false);
+    toast.success(t("pay.savedToast"));
+    setStep(5);
   };
 
   /* ---------------- Step -1: 시작 화면 (WizardStart) + 이전 급여 내역 리스트 ---------------- */
@@ -927,6 +955,7 @@ export default function PayCheckPage() {
 
         {/* AI 심층 분석 리포트 */}
         <AnalysisReport
+          paycheckId={currentPaycheckId}
           finding={resultFinding}
           period={period}
           workplace={state.employment?.workplace}
