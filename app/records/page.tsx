@@ -1,441 +1,281 @@
-'use client';
+"use client";
 
+import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import {
-  ArrowLeft,
   CalendarClock,
   CheckCircle2,
   ChevronDown,
   Clock3,
-  FileSearch,
+  ExternalLink,
   History,
-  Home,
   Plane,
   Receipt,
+  RotateCcw,
   ShieldCheck,
   Trash2,
-  UserRound,
   Wallet,
-} from 'lucide-react';
-import Link from 'next/link';
-import { useEffect, useMemo, useState } from 'react';
+} from "lucide-react";
+import { toast } from "sonner";
+import { AppShell } from "@/components/app-shell";
+import { Button } from "@/components/ui/button";
 import {
   listSavedResults,
-  type ResultKind,
   removeSavedResult,
+  type ResultKind,
   type SavedResult,
-} from '../../lib/paycycle/result-storage';
-import { formatWon } from '../../lib/paycycle/taxcheck';
-import styles from './page.module.css';
+} from "@/lib/paycycle/result-storage";
+import { formatKDate, won } from "@/lib/paycycle/format";
+import { useT } from "@/i18n";
+import { cn } from "@/lib/utils";
 
-type FilterKind = ResultKind | 'all';
+type FilterKind = ResultKind | "all";
 
-const TABS: { key: FilterKind; label: string }[] = [
-  { key: 'all', label: '전체' },
-  { key: 'pay', label: '급여' },
-  { key: 'tax', label: '세금' },
-  { key: 'exit', label: '출국' },
+const TABS: { key: FilterKind; labelKey: string }[] = [
+  { key: "all", labelKey: "records.all" },
+  { key: "pay", labelKey: "records.pay" },
+  { key: "tax", labelKey: "records.tax" },
+  { key: "exit", labelKey: "records.exit" },
 ];
 
-const NAV_ITEMS = [
-  { href: '/dashboard', label: '홈', icon: Home },
-  { href: '/calendar', label: '캘린더', icon: CalendarClock },
-  { href: '/paycheck', label: '급여', icon: Wallet },
-  { href: '/taxcheck', label: '세금', icon: Receipt },
-  { href: '/exitcheck', label: '출국', icon: Plane },
-] as const;
-
 const KIND_META = {
-  pay: { label: '급여 확인', icon: Wallet, target: '/paycheck' },
-  tax: { label: '세금 확인', icon: Receipt, target: '/taxcheck' },
-  exit: { label: '출국 정산', icon: Plane, target: '/exitcheck' },
+  pay: { label: "급여 확인", icon: Wallet, target: "/paycheck" },
+  tax: { label: "세금 확인", icon: Receipt, target: "/taxcheck" },
+  exit: { label: "출국 정산", icon: Plane, target: "/exitcheck" },
 } as const;
 
 export default function RecordsPage() {
-  const [filter, setFilter] = useState<FilterKind>('all');
+  const [filter, setFilter] = useState<FilterKind>("all");
   const [results, setResults] = useState<SavedResult[]>([]);
   const [hydrated, setHydrated] = useState(false);
-  const [toast, setToast] = useState<string | null>(null);
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+
+  const { t } = useT();
 
   useEffect(() => {
     setResults(listSavedResults());
     setHydrated(true);
   }, []);
 
-  useEffect(() => {
-    if (!toast) return;
-    const timeout = window.setTimeout(() => setToast(null), 2400);
-    return () => window.clearTimeout(timeout);
-  }, [toast]);
-
   const counts = useMemo(
     () => ({
       all: results.length,
-      pay: results.filter((result) => result.kind === 'pay').length,
-      tax: results.filter((result) => result.kind === 'tax').length,
-      exit: results.filter((result) => result.kind === 'exit').length,
+      pay: results.filter((r) => r.kind === "pay").length,
+      tax: results.filter((r) => r.kind === "tax").length,
+      exit: results.filter((r) => r.kind === "exit").length,
     }),
-    [results],
+    [results]
   );
 
   const visibleResults = useMemo(
-    () =>
-      filter === 'all'
-        ? results
-        : results.filter((result) => result.kind === filter),
-    [filter, results],
+    () => (filter === "all" ? results : results.filter((r) => r.kind === filter)),
+    [filter, results]
   );
 
   const handleDelete = (result: SavedResult) => {
-    const confirmed = window.confirm(
-      `${KIND_META[result.kind].label} 기록을 삭제할까요?`,
-    );
-    if (!confirmed) return;
+    if (!window.confirm(`${KIND_META[result.kind].label} 기록을 삭제할까요?`)) return;
 
     if (!removeSavedResult(result.id)) {
-      setToast('기록을 삭제하지 못했어요. 다시 시도해 주세요.');
+      toast.error("기록을 삭제하지 못했습니다.");
       return;
     }
 
-    setResults((current) => current.filter((saved) => saved.id !== result.id));
-    setToast('확인 기록을 삭제했어요.');
+    setResults((prev) => prev.filter((r) => r.id !== result.id));
+    toast.success(t("records.deleted"));
   };
 
-  return (
-    <div className={styles.app}>
-      <header className={styles.appHeader}>
-        <div className={styles.headerInner}>
-          <Link
-            href="/dashboard"
-            className={styles.backLink}
-            aria-label="대시보드로 이동"
-          >
-            <ArrowLeft aria-hidden="true" />
-          </Link>
-
-          <div className={styles.headingArea}>
-            <p className={styles.eyebrow}>PayCycle AI</p>
-            <h1>내 확인 기록</h1>
-            <p>지금까지 확인한 급여·세금·출국 결과를 다시 확인해요.</p>
-          </div>
-
-          <Link
-            href="/profile"
-            className={styles.profileLink}
-            aria-label="내 프로필 보기"
-          >
-            <UserRound aria-hidden="true" />
-          </Link>
+  if (!hydrated) {
+    return (
+      <AppShell title={t("records.title")}>
+        <div className="py-20 text-center text-sm text-muted-foreground">
+          {t("home.loading")}
         </div>
-      </header>
+      </AppShell>
+    );
+  }
 
-      <main className={styles.main}>
-        <section className={styles.summaryPanel} aria-label="확인 기록 요약">
-          <div className={styles.summaryIcon}>
-            <History aria-hidden="true" />
-          </div>
-          <div>
-            <span>저장된 전체 기록</span>
-            <strong>{hydrated ? `${counts.all}건` : '확인 중'}</strong>
-            <p>분석 결과는 현재 브라우저에 안전하게 보관돼요.</p>
-          </div>
-        </section>
-
-        <div className={styles.tabs} role="tablist" aria-label="기록 종류">
+  return (
+    <AppShell title={t("records.title")} subtitle={t("records.subtitle")}>
+      <div className="space-y-4">
+        {/* 필터 탭 */}
+        <div className="flex gap-2 rounded-2xl bg-muted/60 p-1.5 backdrop-blur">
           {TABS.map((tab) => {
             const active = filter === tab.key;
+            const count = counts[tab.key];
             return (
               <button
                 key={tab.key}
                 type="button"
-                role="tab"
-                aria-selected={active}
-                className={active ? styles.tabActive : undefined}
                 onClick={() => setFilter(tab.key)}
+                className={cn(
+                  "flex flex-1 items-center justify-center gap-1.5 rounded-xl py-2 text-xs font-bold transition-all",
+                  active
+                    ? "bg-primary text-primary-foreground shadow-sm"
+                    : "text-muted-foreground hover:text-foreground"
+                )}
               >
-                <span>{tab.label}</span>
-                <small>{counts[tab.key]}</small>
+                <span>{t(tab.labelKey as any)}</span>
+                <span
+                  className={cn(
+                    "rounded-md px-1.5 py-0.5 text-[10px]",
+                    active ? "bg-white/20 text-white" : "bg-muted text-muted-foreground"
+                  )}
+                >
+                  {count}
+                </span>
               </button>
             );
           })}
         </div>
 
-        <section
-          className={styles.recordsSection}
-          aria-live="polite"
-          aria-busy={!hydrated}
-        >
-          <div className={styles.sectionHeading}>
-            <div>
-              <h2>{TABS.find((tab) => tab.key === filter)?.label} 기록</h2>
-              <p>최근에 확인한 결과부터 보여드려요.</p>
+        {/* 결과가 없을 때 */}
+        {visibleResults.length === 0 ? (
+          <div className="rounded-3xl border border-dashed border-border bg-card/60 p-8 text-center space-y-3">
+            <History className="mx-auto size-10 text-muted-foreground/50" />
+            <p className="text-xs text-muted-foreground leading-relaxed">
+              {t("records.empty")}
+            </p>
+            <div className="flex flex-wrap justify-center gap-2 pt-2">
+              <Link
+                href="/paycheck"
+                className="rounded-xl bg-secondary px-3 py-1.5 text-xs font-semibold text-secondary-foreground hover:bg-secondary/80"
+              >
+                급여 확인하러 가기
+              </Link>
+              <Link
+                href="/taxcheck"
+                className="rounded-xl bg-secondary px-3 py-1.5 text-xs font-semibold text-secondary-foreground hover:bg-secondary/80"
+              >
+                세금 점검하기
+              </Link>
+              <Link
+                href="/exitcheck"
+                className="rounded-xl bg-secondary px-3 py-1.5 text-xs font-semibold text-secondary-foreground hover:bg-secondary/80"
+              >
+                출국 정산하기
+              </Link>
             </div>
-            <span>{visibleResults.length}건</span>
           </div>
+        ) : (
+          /* 기록 카드 목록 */
+          <div className="space-y-3">
+            {visibleResults.map((result) => {
+              const meta = KIND_META[result.kind];
+              const Icon = meta.icon;
+              const isExpanded = expandedId === result.id;
 
-          {!hydrated ? (
-            <RecordSkeleton />
-          ) : visibleResults.length === 0 ? (
-            <EmptyState filter={filter} />
-          ) : (
-            <ul className={styles.recordList}>
-              {visibleResults.map((result) => (
-                <RecordCard
+              return (
+                <div
                   key={result.id}
-                  result={result}
-                  onDelete={handleDelete}
-                />
-              ))}
-            </ul>
-          )}
-        </section>
+                  className="rounded-3xl border border-border/80 bg-card p-4 shadow-sm transition-all hover:border-primary/30 space-y-3 sm:p-5"
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="flex items-center gap-2.5">
+                      <div className="rounded-2xl bg-primary/10 p-2.5 text-primary">
+                        <Icon className="size-5" />
+                      </div>
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs font-bold text-foreground">
+                            {meta.label}
+                          </span>
+                          <span className="text-[11px] text-muted-foreground">
+                            {t("records.savedAt", {
+                              date: formatKDate(result.createdAt.split("T")[0]),
+                            })}
+                          </span>
+                        </div>
+                        <p className="mt-0.5 text-xs font-medium text-muted-foreground">
+                          {result.kind === "pay" &&
+                            t("records.payLine", {
+                              period: result.payPeriod,
+                              workplace: result.workplace,
+                            })}
+                          {result.kind === "tax" &&
+                            t("records.taxLine", {
+                              year: result.year,
+                              total: result.totalCount,
+                              need: result.needsActionCount,
+                            })}
+                          {result.kind === "exit" &&
+                            t("records.exitLine", {
+                              done: result.readyCount,
+                              total: result.totalCount,
+                            })}
+                        </p>
+                      </div>
+                    </div>
 
-        <p className={styles.privacyNote}>
-          <ShieldCheck aria-hidden="true" />
-          현재 기록은 이 브라우저에만 저장되며 서버로 전송되지 않습니다.
-        </p>
-      </main>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => handleDelete(result)}
+                      className="size-8 rounded-xl text-muted-foreground hover:text-destructive hover:bg-destructive/10"
+                    >
+                      <Trash2 className="size-4" />
+                    </Button>
+                  </div>
 
-      <nav className={styles.bottomNav} aria-label="주요 메뉴">
-        <ul>
-          {NAV_ITEMS.map((item) => {
-            const Icon = item.icon;
-            return (
-              <li key={item.href}>
-                <Link href={item.href}>
-                  <Icon aria-hidden="true" />
-                  <span>{item.label}</span>
-                </Link>
-              </li>
-            );
-          })}
-        </ul>
-      </nav>
+                  {/* 세금 확인 세부 카드 내용 펼치기 */}
+                  {result.kind === "tax" && result.cards && result.cards.length > 0 && (
+                    <div className="pt-1">
+                      <button
+                        type="button"
+                        onClick={() => setExpandedId(isExpanded ? null : result.id)}
+                        className="flex w-full items-center justify-between rounded-xl bg-muted/40 px-3 py-2 text-xs font-semibold text-muted-foreground hover:text-foreground"
+                      >
+                        <span>세부 점검 카드 ({result.cards.length}개)</span>
+                        <ChevronDown
+                          className={cn("size-4 transition-transform", isExpanded && "rotate-180")}
+                        />
+                      </button>
 
-      {toast && (
-        <output className={styles.toast}>
-          <CheckCircle2 aria-hidden="true" />
-          {toast}
-        </output>
-      )}
-    </div>
-  );
-}
+                      {isExpanded && (
+                        <div className="mt-2.5 space-y-2 pt-1 border-t border-border/50">
+                          {result.cards.map((card, idx) => (
+                            <div
+                              key={idx}
+                              className="rounded-2xl border border-border/60 bg-background/50 p-3 text-xs space-y-1.5"
+                            >
+                              <div className="flex items-center justify-between">
+                                <span className="font-bold text-foreground">
+                                  {card.title}
+                                </span>
+                                <span className="text-[11px] font-semibold text-primary">
+                                  {card.status}
+                                </span>
+                              </div>
+                              <p className="text-[11px] text-muted-foreground">
+                                {card.summary}
+                              </p>
+                              {card.nextActions.length > 0 && (
+                                <p className="text-[11px] font-medium text-foreground">
+                                  다음 행동: {card.nextActions[0]}
+                                </p>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
 
-function RecordCard({
-  result,
-  onDelete,
-}: {
-  result: SavedResult;
-  onDelete: (result: SavedResult) => void;
-}) {
-  const meta = KIND_META[result.kind];
-  const Icon = meta.icon;
-
-  return (
-    <li className={styles.recordCard}>
-      <div className={styles.recordTop}>
-        <span className={`${styles.kindIcon} ${styles[result.kind]}`}>
-          <Icon aria-hidden="true" />
-        </span>
-
-        <div className={styles.recordTitle}>
-          <p>
-            {meta.label}
-            <span>{resultKindLabel(result)}</span>
-          </p>
-          <h3>{resultHeadline(result)}</h3>
-        </div>
-
-        <button
-          type="button"
-          className={styles.deleteButton}
-          onClick={() => onDelete(result)}
-          aria-label={`${meta.label} 기록 삭제`}
-        >
-          <Trash2 aria-hidden="true" />
-        </button>
-      </div>
-
-      <div className={styles.recordSummary}>{resultSummary(result)}</div>
-
-      {result.kind === 'tax' && result.cards?.length ? (
-        <details className={styles.savedDetails}>
-          <summary>
-            <span>저장된 판정 상세 보기</span>
-            <ChevronDown aria-hidden="true" />
-          </summary>
-          <ul>
-            {result.cards.map((card) => (
-              <li key={card.id}>
-                <div>
-                  <strong>{card.title}</strong>
-                  <span
-                    className={`${styles.ruleStatus} ${ruleStatusClass(card.status)}`}
-                  >
-                    {card.status}
-                  </span>
+                  {/* 다시 확인하기 바로가기 */}
+                  <div className="flex justify-end pt-1">
+                    <Link
+                      href={meta.target}
+                      className="inline-flex items-center gap-1 text-xs font-bold text-primary hover:underline"
+                    >
+                      <span>{t("records.reCheck")}</span>
+                      <RotateCcw className="size-3.5" />
+                    </Link>
+                  </div>
                 </div>
-                <p>{card.summary}</p>
-                {card.nextActions[0] ? (
-                  <small>다음 행동 · {card.nextActions[0]}</small>
-                ) : null}
-              </li>
-            ))}
-          </ul>
-        </details>
-      ) : null}
-
-      <div className={styles.recordFooter}>
-        <p>
-          <Clock3 aria-hidden="true" />
-          {formatDate(result.createdAt)} 확인
-        </p>
-        <Link href={meta.target}>다시 확인하기</Link>
+              );
+            })}
+          </div>
+        )}
       </div>
-    </li>
+    </AppShell>
   );
-}
-
-function EmptyState({ filter }: { filter: FilterKind }) {
-  const target = filter === 'all' ? '/taxcheck' : KIND_META[filter].target;
-  const label =
-    filter === 'all' ? '확인 시작하기' : `${KIND_META[filter].label} 시작하기`;
-
-  return (
-    <div className={styles.emptyState}>
-      <span>
-        <FileSearch aria-hidden="true" />
-      </span>
-      <h3>아직 확인 기록이 없습니다</h3>
-      <p>
-        급여·세금·출국 확인을 완료하면 이곳에서 결과를 다시 확인할 수 있어요.
-      </p>
-      <Link href={target}>{label}</Link>
-    </div>
-  );
-}
-
-function RecordSkeleton() {
-  return (
-    <output className={styles.skeleton}>
-      <span className={styles.screenReaderOnly}>확인 기록 불러오는 중</span>
-      <span className={styles.skeletonCard} aria-hidden="true" />
-      <span className={styles.skeletonCard} aria-hidden="true" />
-    </output>
-  );
-}
-
-function resultKindLabel(result: SavedResult) {
-  switch (result.kind) {
-    case 'pay':
-      return result.payPeriod || '기간 미확인';
-    case 'tax':
-      return `${result.year}년`;
-    case 'exit':
-      return result.departureDate || '출국일 미정';
-  }
-}
-
-function resultHeadline(result: SavedResult) {
-  switch (result.kind) {
-    case 'pay':
-      return result.workplace || '근무지 미입력';
-    case 'tax':
-      return `${result.totalCount}개 항목 중 ${taxReviewCount(result)}개 추가 확인 필요`;
-    case 'exit':
-      return `${result.totalCount}개 중 ${result.readyCount}개 준비 완료`;
-  }
-}
-
-function resultSummary(result: SavedResult) {
-  switch (result.kind) {
-    case 'pay':
-      return (
-        <>
-          <div>
-            <span>실제 입금액</span>
-            <strong>
-              {result.paidAmount === null
-                ? '확인 불가'
-                : formatWon(result.paidAmount)}
-            </strong>
-          </div>
-          <div>
-            <span>확인된 차이</span>
-            <strong>
-              {result.differenceAmount === null
-                ? '확인 불가'
-                : formatWon(result.differenceAmount)}
-            </strong>
-          </div>
-        </>
-      );
-    case 'tax':
-      return (
-        <>
-          <div>
-            <span>확인된 급여</span>
-            <strong>{formatWon(result.yearlyPay)}</strong>
-          </div>
-          <div>
-            <span>적용 가능 항목</span>
-            <strong>{result.applicableCount}개</strong>
-          </div>
-          <div>
-            <span>추가 확인 필요</span>
-            <strong className={styles.needValue}>
-              {taxReviewCount(result)}개
-            </strong>
-          </div>
-        </>
-      );
-    case 'exit':
-      return (
-        <>
-          <div>
-            <span>준비 완료</span>
-            <strong>{result.readyCount}개</strong>
-          </div>
-          <div>
-            <span>남은 항목</span>
-            <strong>
-              {Math.max(result.totalCount - result.readyCount, 0)}개
-            </strong>
-          </div>
-        </>
-      );
-  }
-}
-
-function taxReviewCount(result: Extract<SavedResult, { kind: 'tax' }>) {
-  const unknownCount =
-    result.unknownCount ??
-    result.cards?.filter((card) => card.status === '현재 정보로 판단 불가')
-      .length ??
-    0;
-  return result.needsActionCount + unknownCount;
-}
-
-function ruleStatusClass(status: string) {
-  switch (status) {
-    case '적용 가능성 있음':
-      return styles.rulePossible;
-    case '추가 자료 필요':
-      return styles.ruleNeed;
-    case '조건 미충족':
-      return styles.ruleNot;
-    default:
-      return styles.ruleUnknown;
-  }
-}
-
-function formatDate(iso: string) {
-  const parsed = new Date(iso);
-  if (Number.isNaN(parsed.getTime())) return '날짜 미확인';
-
-  return parsed.toLocaleDateString('ko-KR', {
-    year: 'numeric',
-    month: 'long',
-    day: 'numeric',
-  });
 }

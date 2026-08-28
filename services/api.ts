@@ -121,6 +121,7 @@ export interface DocumentUploadResponseDto {
 export interface CandidateAmountDto {
   label: string;
   amount: number;
+  targetField?: keyof Omit<DocFields, "period">;
 }
 
 export interface DocumentOcrExtractedDataDto {
@@ -629,9 +630,9 @@ export async function readDocumentOcrApi(req: OcrRequestDto): Promise<OcrRespons
   if (req.kind === "contract") {
     mockFields = { ...base, basePay: 2_200_000, allowances: 0, payDay: 25 };
     candidates = [
-      { label: "기본급", amount: 2_200_000 },
-      { label: "식대보조", amount: 150_000 },
-      { label: "월급여총액", amount: 2_350_000 },
+      { label: "기본급", amount: 2_200_000, targetField: "basePay" },
+      { label: "식대보조", amount: 150_000, targetField: "allowances" },
+      { label: "월급여총액", amount: 2_350_000, targetField: "basePay" },
     ];
   } else if (req.kind === "statement") {
     mockFields = {
@@ -643,17 +644,16 @@ export async function readDocumentOcrApi(req: OcrRequestDto): Promise<OcrRespons
       payDate: payDayIso(req.period, 25),
     };
     candidates = [
-      { label: "기본급", amount: 2_200_000 },
-      { label: "연장근로수당", amount: 380_000 },
-      { label: "지급총액", amount: 2_580_000 },
-      { label: "공제총액", amount: 200_000 },
-      { label: "실지급액", amount: 2_380_000 },
+      { label: "기본급", amount: 2_200_000, targetField: "basePay" },
+      { label: "연장근로수당", amount: 380_000, targetField: "allowances" },
+      { label: "지급총액", amount: 2_580_000, targetField: "netPay" },
+      { label: "공제총액", amount: 200_000, targetField: "deductions" },
+      { label: "실지급액", amount: 2_380_000, targetField: "netPay" },
     ];
   } else {
     mockFields = { ...base, netPay: 2_260_000, payDate: payDayIso(req.period, 27) };
     candidates = [
-      { label: "실입금액", amount: 2_260_000 },
-      { label: "거래후잔액", amount: 6_760_000 },
+      { label: "실입금액", amount: 2_260_000, targetField: "netPay" },
     ];
   }
 

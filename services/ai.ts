@@ -1,4 +1,4 @@
-import { translateAiApi } from "@/services/api";
+import { explainPaycheckApi, translateAiApi } from "@/services/api";
 import { QUESTION_LANGUAGE, type UiLocale } from "@/i18n/dict";
 import type { AiPaycheckReportDto } from "@/app/api/agent/paycheck/route";
 import type { PayFinding } from "@/lib/paycycle/types";
@@ -26,7 +26,7 @@ export async function translateForEmployer(
   };
 }
 
-/** AI Agent 급여 대조 심층 진단 분석 요청 */
+/** AI Agent 급여 대조 심층 진단 분석 요청 (백엔드 POST /api/paychecks/{paycheckId}/explain 연동) */
 export async function fetchAiPaycheckAnalysis(payload: {
   paycheckId: number | string;
   finding: PayFinding;
@@ -34,6 +34,63 @@ export async function fetchAiPaycheckAnalysis(payload: {
   workplace?: string;
   locale: UiLocale;
 }): Promise<{ ok: boolean; isMock: boolean; data: AiPaycheckReportDto }> {
+  const numericId =
+    typeof payload.paycheckId === "number"
+      ? payload.paycheckId
+      : Number(String(payload.paycheckId).replace(/[^0-9]/g, "")) || 1;
+
+  try {
+    // 1. Spring Boot 백엔드 POST /api/paychecks/{paycheckId}/explain 호출
+    const backendRes = await explainPaycheckApi(numericId, {
+      locale: payload.locale,
+      workplace: payload.workplace,
+      finding: payload.finding,
+      period: payload.period,
+    });
+
+    if (backendRes?.data) {
+      const d = backendRes.data;
+      const firstCard = d.employerQuestionCards?.[0];
+      const localFallback = generateLocalAiPaycheckAnalysis(payload);
+
+      return {
+        ok: true,
+        isMock: backendRes.isMock,
+        data: {
+          headline: d.summary || localFallback.data.headline,
+          summary: d.summary || localFallback.data.summary,
+          causes:
+            d.reasons && d.reasons.length > 0
+              ? d.reasons.map((r, i) => ({
+                  title: `확인 항목 ${i + 1}`,
+                  description: r,
+                  category: getCategoryFromFinding(payload.finding),
+                }))
+              : localFallback.data.causes,
+          legalBasis: localFallback.data.legalBasis,
+          requiredEvidence: localFallback.data.requiredEvidence,
+          nextActions:
+            d.nextActions && d.nextActions.length > 0
+              ? d.nextActions.map((act, i) => ({
+                  step: i + 1,
+                  title: act,
+                  action: act,
+                  urgency: "HIGH" as const,
+                }))
+              : localFallback.data.nextActions,
+          messageForEmployer: {
+            korean: firstCard?.koreanScript || localFallback.data.messageForEmployer.korean,
+            translated: firstCard?.nativeScript || localFallback.data.messageForEmployer.translated,
+            language: firstCard?.language || payload.locale,
+          },
+        },
+      };
+    }
+  } catch (err) {
+    console.warn("Backend explainPaycheckApi error:", err);
+  }
+
+  // 2. Next.js 내부 route 또는 로컬 엔진 Fallback
   try {
     const res = await fetch("/api/agent/paycheck", {
       method: "POST",
@@ -46,8 +103,8 @@ export async function fetchAiPaycheckAnalysis(payload: {
         return json;
       }
     }
-  } catch (err) {
-    console.warn("fetchAiPaycheckAnalysis error:", err);
+  } catch {
+    /* fallback */
   }
 
   return generateLocalAiPaycheckAnalysis(payload);

@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   CalendarClock,
   ChevronLeft,
@@ -76,13 +76,17 @@ const WEEKDAYS_MAP: Record<string, string[]> = {
 };
 
 export default function CalendarPage() {
-  const { state, hydrated, addEvent, removeEvent, toggleEvent } = usePayCycle();
+  const { state, hydrated, addEvent, removeEvent, toggleEvent, refreshFromBackend } = usePayCycle();
   const { t, locale } = useT();
   const weekdays = WEEKDAYS_MAP[locale] || WEEKDAYS_MAP.ko;
 
   const [cursor, setCursor] = useState(() => new Date());
   const [selectedDate, setSelectedDate] = useState<string>(() => isoDate(new Date()));
   const [dialogOpen, setDialogOpen] = useState(false);
+
+  useEffect(() => {
+    void refreshFromBackend();
+  }, [refreshFromBackend]);
 
   const [newTitle, setNewTitle] = useState("");
   const [newType, setNewType] = useState<EventType>("PERSONAL");

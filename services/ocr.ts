@@ -10,6 +10,8 @@ import { emptyFields } from "@/lib/paycycle/types";
 
 export interface OcrResult {
   ok: boolean;
+  /** 백엔드 업로드된 Document ID */
+  documentId?: number;
   /** 실제 AI 판독이 아니라 샘플(Mock) 값인지 */
   mock: boolean;
   fields: DocFields;
@@ -57,13 +59,15 @@ export async function readDocument(input: {
 
       return {
         ok: true,
+        documentId: docId,
         mock: uploadRes.isMock || ocrRes.isMock,
         fields,
-        candidateAmounts: ext.candidateAmounts || (ext.baseSalary || ext.netPay ? [
-          ...(ext.baseSalary ? [{ label: "기본급", amount: ext.baseSalary }] : []),
-          ...(ext.overtimeAllowance ? [{ label: "연장근로수당", amount: ext.overtimeAllowance }] : []),
-          ...(ext.totalPayment ? [{ label: "지급총액", amount: ext.totalPayment }] : []),
-          ...(ext.netPay ? [{ label: "실지급액", amount: ext.netPay }] : []),
+        candidateAmounts: ext.candidateAmounts || (ext.baseSalary || ext.netPay || ext.overtimeAllowance || ext.deduction ? [
+          ...(ext.baseSalary ? [{ label: "기본급", amount: ext.baseSalary, targetField: "basePay" as const }] : []),
+          ...(ext.overtimeAllowance ? [{ label: "연장근로수당", amount: ext.overtimeAllowance, targetField: "allowances" as const }] : []),
+          ...(ext.totalPayment ? [{ label: "지급총액", amount: ext.totalPayment, targetField: "netPay" as const }] : []),
+          ...(ext.deduction ? [{ label: "공제총액", amount: ext.deduction, targetField: "deductions" as const }] : []),
+          ...(ext.netPay ? [{ label: "실지급액", amount: ext.netPay, targetField: "netPay" as const }] : []),
         ] : undefined),
         confidence: ocrRes.data.ocrStatus === "SUCCESS" || ocrRes.data.ocrStatus === "COMPLETED" ? "high" : "low",
         message: `${file.name} OCR 판독이 완료되었습니다.`,

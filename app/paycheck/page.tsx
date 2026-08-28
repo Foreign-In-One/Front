@@ -48,9 +48,11 @@ import type {
 } from "@/lib/paycycle/types";
 import { formatKDate, monthLabel, periodOf, uid, won } from "@/lib/paycycle/format";
 import { readDocument } from "@/services/ocr";
+import { savePayCheckResult } from "@/lib/paycycle/result-storage";
 import {
   analyzePaycheckApi,
   getMockBankTransactionsApi,
+  updateDocumentExtractedDataApi,
   type CandidateAmountDto,
   type MockBankTransactionDto,
 } from "@/services/api";
@@ -99,6 +101,7 @@ function translateCandidateLabel(rawLabel: string, t: (key: string) => string): 
   if (norm.includes("연장") || norm.toLowerCase().includes("overtime")) return t("pay.field.overtimeAllowance");
   if (norm.includes("지급총액") || norm.includes("총지급") || norm.toLowerCase().includes("gross") || norm.includes("월급여총액")) return t("pay.field.totalPayment");
   if (norm.includes("공제") || norm.toLowerCase().includes("deduction")) return t("pay.field.deductions");
+  if (norm.includes("식대") || norm.toLowerCase().includes("meal")) return t("pay.field.allowances");
   if (norm.includes("수당") || norm.toLowerCase().includes("allowance")) return t("pay.field.allowances");
   if (norm.includes("잔액") || norm.toLowerCase().includes("balance")) return t("pay.field.afterBalance");
   return rawLabel;
@@ -271,7 +274,7 @@ function defaultDoc(kind: DocKind, period: string): PayDocument {
 }
 
 export default function PayCheckPage() {
-  const { state, hydrated, upsertPayRecord, saveResult, addEvent } = usePayCycle();
+  const { state, hydrated, upsertPayRecord, saveResult, addEvent, refreshFromBackend } = usePayCycle();
   const { t, locale } = useT();
 
   const [step, setStep] = useState<number>(-1);
@@ -336,11 +339,22 @@ export default function PayCheckPage() {
   const fetchBankSalary = useCallback(async (targetPeriod: string) => {
     setSyncingBank(true);
     try {
-      const res = await getMockBankTransactionsApi();
+      const from = `${targetPeriod}-01`;
+      const to = `${targetPeriod}-31`;
+      const res = await getMockBankTransactionsApi(from, to);
       const txs = res.transactions.resList || [];
-      const matched =
-        txs.find((t) => t.tranType === "급여" || t.inoutType === "입금" || t.printedContent.includes("급여")) ||
-        txs[0];
+      const periodCompact = targetPeriod.replace(/[^0-9]/g, "");
+
+      const matched = txs.find((t) => {
+        const isSalary =
+          t.tranType === "급여" ||
+          (t.inoutType === "입금" && (t.printedContent?.includes("급여") || t.printedContent?.includes("월급")));
+        const isPeriodMatch = t.bankTranDate
+          ? t.bankTranDate.startsWith(periodCompact)
+          : true;
+        return isSalary && isPeriodMatch;
+      });
+
       if (matched) {
         setBankTx(matched);
         const amt = Number(matched.tranAmt.replace(/[^0-9.-]+/g, "")) || 2260000;
@@ -366,16 +380,19 @@ export default function PayCheckPage() {
             },
             confirmed: true,
             masked: false,
-            note: `${matched.bankName || "하나은행"} · ${matched.printedContent || "한국정밀 급여"} (${won(amt)})`,
+            note: `${matched.bankName || "하나은행"} · ${matched.printedContent || "급여 입금"} (${won(amt)})`,
           },
         }));
 
         setCandidates((prev) => ({
           ...prev,
-          deposit: [
-            { label: "실입금액", amount: amt },
-            ...(matched.afterBalanceAmt ? [{ label: "거래후잔액", amount: Number(matched.afterBalanceAmt) }] : []),
-          ],
+          deposit: [{ label: "실입금액", amount: amt, targetField: "netPay" }],
+        }));
+      } else {
+        setBankTx(null);
+        setCandidates((prev) => ({
+          ...prev,
+          deposit: [],
         }));
       }
     } catch (err) {
@@ -500,12 +517,21 @@ export default function PayCheckPage() {
     );
   }
 
+  const [documentIds, setDocumentIds] = useState<Record<DocKind, number | undefined>>({
+    contract: undefined,
+    statement: undefined,
+    deposit: undefined,
+  });
+
   const handleUpload = async (kind: DocKind, file: File) => {
     setReading((p) => ({ ...p, [kind]: true }));
     const reader = new FileReader();
     reader.onload = async (e) => {
       const dataUrl = e.target?.result as string;
       const res = await readDocument({ kind, file, dataUrl, period });
+      if (res.documentId) {
+        setDocumentIds((p) => ({ ...p, [kind]: res.documentId }));
+      }
       setDocs((prev) => ({
         ...prev,
         [kind]: {
@@ -518,12 +544,10 @@ export default function PayCheckPage() {
           note: res.message,
         },
       }));
-      if (res.candidateAmounts && res.candidateAmounts.length > 0) {
-        setCandidates((prev) => ({
-          ...prev,
-          [kind]: res.candidateAmounts || [],
-        }));
-      }
+      setCandidates((prev) => ({
+        ...prev,
+        [kind]: res.candidateAmounts ?? [],
+      }));
       setReading((p) => ({ ...p, [kind]: false }));
       if (res.ok) {
         toast.success(t("pay.readDone", { name: file.name }));
@@ -537,15 +561,46 @@ export default function PayCheckPage() {
   const updateField = (kind: DocKind, key: keyof DocFields, val: any) => {
     setDocs((prev) => {
       const current = prev[kind] ?? defaultDoc(kind, period);
+      const nextFields = { ...current.fields, [key]: val };
+
+      // 백엔드 동기화 (PATCH /api/documents/{documentId}/extracted-data)
+      const docId = documentIds[kind];
+      if (docId) {
+        void updateDocumentExtractedDataApi(docId, {
+          payPeriod: nextFields.period,
+          baseSalary: nextFields.basePay ?? undefined,
+          overtimeAllowance: nextFields.allowances ?? undefined,
+          deduction: nextFields.deductions ?? undefined,
+          netPay: nextFields.netPay ?? undefined,
+          paymentDate: nextFields.payDate ?? undefined,
+          payday: nextFields.payDay ?? undefined,
+        });
+      }
+
       return {
         ...prev,
         [kind]: {
           ...current,
-          fields: { ...current.fields, [key]: val },
+          fields: nextFields,
         },
       };
     });
   };
+
+  const applyCandidate = useCallback(
+    (kind: DocKind, cand: CandidateAmountDto) => {
+      const targetField: keyof Omit<DocFields, "period"> =
+        cand.targetField || (kind === "contract" ? "basePay" : "netPay");
+      updateField(kind, targetField, cand.amount);
+      toast.success(
+        t("pay.candidate.appliedToast", {
+          field: t(FIELD_LABEL_KEYS[targetField]),
+          amount: won(cand.amount),
+        })
+      );
+    },
+    [t]
+  );
 
   const manualDrawer = (
     <Drawer open={editingKind !== null} onOpenChange={(open) => !open && setEditingKind(null)}>
@@ -570,25 +625,7 @@ export default function PayCheckPage() {
                       <button
                         key={idx}
                         type="button"
-                        onClick={() => {
-                          if (editingKind === "contract") {
-                            updateField(editingKind, "basePay", cand.amount);
-                            toast.success(
-                              t("pay.candidate.appliedToast", {
-                                field: t("pay.field.basePay"),
-                                amount: won(cand.amount),
-                              })
-                            );
-                          } else {
-                            updateField(editingKind, "netPay", cand.amount);
-                            toast.success(
-                              t("pay.candidate.appliedToast", {
-                                field: t("pay.field.netPay"),
-                                amount: won(cand.amount),
-                              })
-                            );
-                          }
-                        }}
+                        onClick={() => applyCandidate(editingKind, cand)}
                         className="inline-flex items-center gap-1.5 rounded-xl bg-card hover:bg-primary/10 text-foreground hover:text-primary border border-border/80 hover:border-primary/40 px-3 py-1.5 text-xs font-bold shadow-2xs transition-all active:scale-95 cursor-pointer"
                       >
                         {isRec && (
@@ -662,19 +699,28 @@ export default function PayCheckPage() {
     const contractBase =
       typeof docs.contract?.fields.basePay === "number"
         ? docs.contract.fields.basePay
-        : Number(String(docs.contract?.fields.basePay || "0").replace(/[^0-9.-]+/g, "")) || 2500000;
+        : docs.contract?.fields.basePay
+        ? Number(String(docs.contract.fields.basePay).replace(/[^0-9.-]+/g, "")) || undefined
+        : undefined;
 
     const statementNet =
       typeof docs.statement?.fields.netPay === "number"
         ? docs.statement.fields.netPay
-        : Number(String(docs.statement?.fields.netPay || "0").replace(/[^0-9.-]+/g, "")) || 2380000;
+        : docs.statement?.fields.netPay
+        ? Number(String(docs.statement.fields.netPay).replace(/[^0-9.-]+/g, "")) || undefined
+        : undefined;
 
     const depositNet =
       typeof docs.deposit?.fields.netPay === "number"
         ? docs.deposit.fields.netPay
-        : Number(String(docs.deposit?.fields.netPay || "0").replace(/[^0-9.-]+/g, "")) || 2260000;
+        : docs.deposit?.fields.netPay
+        ? Number(String(docs.deposit.fields.netPay).replace(/[^0-9.-]+/g, "")) || undefined
+        : undefined;
 
-    const diff = depositNet - statementNet;
+    const diff =
+      statementNet !== undefined && depositNet !== undefined
+        ? depositNet - statementNet
+        : undefined;
     const expectedDate = docs.statement?.fields.payDate || `${period}-25`;
     const actualDate = docs.deposit?.fields.payDate || `${period}-25T09:14:00`;
 
@@ -726,6 +772,15 @@ export default function PayCheckPage() {
       employment: state.employment,
     });
 
+    savePayCheckResult({
+      payPeriod: period,
+      workplace: state.employment?.workplace ?? "",
+      status: result.overallStatus,
+      differenceAmount: result.findings[0]?.difference ?? null,
+      paidAmount: docs.deposit?.fields.netPay ?? null,
+      findingCount: result.findings.length,
+    });
+
     // 캘린더에 급여 확인 일정 자동 등록
     const eventDate = docs.deposit?.fields.payDate?.slice(0, 10) || `${period}-25`;
     const isNormal = result.overallStatus === "MATCH";
@@ -740,6 +795,9 @@ export default function PayCheckPage() {
       completed: true,
       auto: true,
     });
+
+    // 백엔드 생성 캘린더 일정 및 분석 결과 동기화
+    void refreshFromBackend();
 
     setAnalyzing(false);
     toast.success(t("pay.savedToast"));
@@ -1112,34 +1170,15 @@ export default function PayCheckPage() {
                       {candidates[currentKind].map((cand, idx) => {
                         const isRec = isCandidateRecommended(currentKind, cand.label);
                         const translatedLabel = translateCandidateLabel(cand.label, t);
-                        const isCurrentVal =
-                          currentKind === "contract"
-                            ? currentDoc?.fields.basePay === cand.amount
-                            : currentDoc?.fields.netPay === cand.amount;
+                        const targetField: keyof Omit<DocFields, "period"> =
+                          cand.targetField || (currentKind === "contract" ? "basePay" : "netPay");
+                        const isCurrentVal = currentDoc?.fields[targetField] === cand.amount;
 
                         return (
                           <button
                             key={idx}
                             type="button"
-                            onClick={() => {
-                              if (currentKind === "contract") {
-                                updateField(currentKind, "basePay", cand.amount);
-                                toast.success(
-                                  t("pay.candidate.appliedToast", {
-                                    field: t("pay.field.basePay"),
-                                    amount: won(cand.amount),
-                                  })
-                                );
-                              } else {
-                                updateField(currentKind, "netPay", cand.amount);
-                                toast.success(
-                                  t("pay.candidate.appliedToast", {
-                                    field: t("pay.field.netPay"),
-                                    amount: won(cand.amount),
-                                  })
-                                );
-                              }
-                            }}
+                            onClick={() => applyCandidate(currentKind, cand)}
                             className={`inline-flex items-center gap-1.5 rounded-xl border px-3 py-1.5 text-xs font-bold shadow-2xs transition-all active:scale-95 cursor-pointer ${
                               isCurrentVal
                                 ? "bg-primary text-primary-foreground border-primary shadow-xs"

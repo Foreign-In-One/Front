@@ -262,15 +262,26 @@ export function PayCycleProvider({ children }: { children: ReactNode }) {
       });
 
       setState((prev) => {
+        const prevRecordsMap = new Map(prev.payRecords.map((r) => [r.id, r]));
+        const prevRecordsByPeriod = new Map(prev.payRecords.map((r) => [r.period, r]));
         const existingRecordKeys = new Set(mappedRecords.map((r) => r.period || r.id));
+        const preservedRecords = mappedRecords.map((r) => {
+          const local = prevRecordsMap.get(r.id) || (r.period ? prevRecordsByPeriod.get(r.period) : undefined);
+          return local ? { ...r, ...local, analysis: r.analysis || local.analysis } : r;
+        });
         const mergedRecords = [
-          ...mappedRecords,
+          ...preservedRecords,
           ...prev.payRecords.filter((r) => !existingRecordKeys.has(r.period || r.id)),
         ];
 
+        const prevEventsMap = new Map(prev.events.map((e) => [e.id, e]));
         const existingEventIds = new Set(mappedEvents.map((e) => e.id));
+        const preservedEvents = mappedEvents.map((e) => {
+          const local = prevEventsMap.get(e.id);
+          return local ? { ...e, completed: local.completed ?? e.completed } : e;
+        });
         const mergedEvents = [
-          ...mappedEvents,
+          ...preservedEvents,
           ...prev.events.filter((e) => !existingEventIds.has(e.id)),
         ];
 
@@ -326,8 +337,13 @@ export function PayCycleProvider({ children }: { children: ReactNode }) {
     }
 
     async function init() {
-      await refreshFromBackend();
+      // 로컬 스토리지 복원은 이미 완료되었으므로 화면 차단을 방지하기 위해 즉시 hydrated 설정
       setHydrated(true);
+      try {
+        await refreshFromBackend();
+      } catch (err) {
+        console.warn("Backend refresh failed during init:", err);
+      }
     }
 
     void init();
@@ -387,7 +403,11 @@ export function PayCycleProvider({ children }: { children: ReactNode }) {
   const addEvent = useCallback((event: Omit<CalendarEvent, "id">) => {
     setState((prev) => {
       const exists = prev.events.find(
-        (e) => e.date === event.date && e.type === event.type && e.title === event.title
+        (e) =>
+          e.date === event.date &&
+          e.type === event.type &&
+          e.title === event.title &&
+          (e.time || "") === (event.time || "")
       );
       if (exists) {
         return {
