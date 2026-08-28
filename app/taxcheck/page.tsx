@@ -29,7 +29,7 @@ import { cn } from "@/lib/utils";
 const STEP_TOTAL = 4;
 
 export default function TaxCheckPage() {
-  const { state, hydrated, yearlyPay, monthsRecorded, updateTaxProfile } = usePayCycle();
+  const { state, hydrated, yearlyPay, monthsRecorded, updateTaxProfile, signature } = usePayCycle();
   const { t } = useT();
 
   const [step, setStep] = useState(-1);
@@ -40,14 +40,36 @@ export default function TaxCheckPage() {
     usesDeductions: state.taxProfile?.usesDeductions ?? null,
   }));
 
+  // Context의 taxProfile이 hydration된 이후에만 localTaxProfile과 동기화
+  useEffect(() => {
+    if (hydrated && state.taxProfile) {
+      setLocalTaxProfile({
+        housingSaving: state.taxProfile.housingSaving ?? null,
+        housingSavingProof: state.taxProfile.housingSavingProof ?? null,
+        isHomeless: state.taxProfile.isHomeless ?? null,
+        usesDeductions: state.taxProfile.usesDeductions ?? null,
+      });
+    }
+  }, [hydrated, state.taxProfile]);
+
+  const handleUpdateTaxProfile = (patch: Partial<TaxProfile>) => {
+    setLocalTaxProfile((prev) => {
+      const next = { ...prev, ...patch };
+      if (hydrated) {
+        updateTaxProfile(next);
+      }
+      return next;
+    });
+  };
+
   const savedFingerprint = useRef<string | null>(null);
 
   const employment = state.employment;
   const currentYear = new Date().getFullYear();
 
-  // 실제 데이터 또는 기본값 연동
-  const effectiveYearlyPay = yearlyPay > 0 ? yearlyPay : 28560000;
-  const effectiveMonths = monthsRecorded > 0 ? monthsRecorded : 12;
+  // 실제 데이터 연동 (기본값 제거)
+  const effectiveYearlyPay = yearlyPay > 0 ? yearlyPay : 0;
+  const effectiveMonths = monthsRecorded > 0 ? monthsRecorded : 0;
 
   const cards: TaxCard[] = useMemo(() => {
     return evaluateTax({
@@ -76,18 +98,19 @@ export default function TaxCheckPage() {
 
   // 결과 화면 도달 시 저장
   useEffect(() => {
-    if (step === 3) {
+    if (step === 3 && hydrated) {
       const fingerprint = JSON.stringify({
         year: currentYear,
         yearlyPay: effectiveYearlyPay,
         monthsRecorded: effectiveMonths,
         localTaxProfile,
+        signature,
       });
 
       if (savedFingerprint.current === fingerprint) return;
-      savedFingerprint.current = fingerprint;
 
-      saveTaxCheckResult({
+      const res = saveTaxCheckResult({
+        profileSignature: signature,
         year: currentYear,
         yearlyPay: effectiveYearlyPay,
         monthsRecorded: effectiveMonths,
@@ -105,10 +128,24 @@ export default function TaxCheckPage() {
         })),
       });
 
-      updateTaxProfile(localTaxProfile);
-      toast.success(t("tax.copied"));
+      if (res) {
+        savedFingerprint.current = fingerprint;
+        updateTaxProfile(localTaxProfile);
+        toast.success(t("tax.saved"));
+      }
     }
-  }, [step, currentYear, effectiveYearlyPay, effectiveMonths, localTaxProfile, cards, updateTaxProfile, t]);
+  }, [
+    step,
+    currentYear,
+    effectiveYearlyPay,
+    effectiveMonths,
+    localTaxProfile,
+    cards,
+    updateTaxProfile,
+    signature,
+    hydrated,
+    t,
+  ]);
 
   const handleCopyResult = () => {
     const text = cards
@@ -139,7 +176,7 @@ export default function TaxCheckPage() {
   // 1. 시작 화면
   if (step === -1) {
     return (
-      <AppShell title={t("tab.tax")} subtitle="외국인 근로자 연말정산 및 세액공제 혜택을 확인해요">
+      <AppShell title={t("tab.tax")} subtitle={t("tax.step.startDesc")}>
         <div className="space-y-4">
           {/* 상단 배너 카드 */}
           <div className="rounded-3xl bg-gradient-to-br from-primary via-[#1D4A88] to-primary p-6 text-primary-foreground shadow-xl shadow-primary/20">
@@ -148,18 +185,18 @@ export default function TaxCheckPage() {
               <span>{t("landing.f2.when")}</span>
             </div>
             <h2 className="mt-2 text-2xl font-bold tracking-tight">
-              연말정산 & 세금 혜택 점검
+              {t("tax.step.start")}
             </h2>
             <p className="mt-1 text-sm text-primary-foreground/80">
-              거주자 판정부터 주택청약저축 공제, 19% 단일세율 유불리까지 4단계로 점검합니다.
+              {t("tax.step.startDesc")}
             </p>
 
             <div className="mt-4 flex flex-wrap gap-2 pt-2 border-t border-white/10 text-xs">
               <span className="rounded-xl bg-white/15 px-3 py-1.5 backdrop-blur">
-                올해 확인 급여: {won(effectiveYearlyPay)}
+                {t("tax.step.yearlyRecorded", { amount: won(effectiveYearlyPay) })}
               </span>
               <span className="rounded-xl bg-white/15 px-3 py-1.5 backdrop-blur">
-                기록 개월: {effectiveMonths}개월
+                {t("tax.step.monthsRecorded", { n: effectiveMonths })}
               </span>
             </div>
           </div>
@@ -173,22 +210,22 @@ export default function TaxCheckPage() {
               <div className="flex items-start gap-2.5 rounded-2xl bg-muted/50 p-3">
                 <ShieldCheck className="size-4 shrink-0 text-primary mt-0.5" />
                 <div>
-                  <strong className="font-semibold text-foreground">1. 세법상 거주자 판정 (183일 기준)</strong>
-                  <p className="mt-0.5">국내 체류 기간에 따라 내국인과 동일한 소득공제 적용 여부 판정</p>
+                  <strong className="font-semibold text-foreground">{t("tax.step1.title")}</strong>
+                  <p className="mt-0.5">{t("tax.step1.desc")}</p>
                 </div>
               </div>
               <div className="flex items-start gap-2.5 rounded-2xl bg-muted/50 p-3">
                 <Wallet className="size-4 shrink-0 text-info mt-0.5" />
                 <div>
-                  <strong className="font-semibold text-foreground">2. 주택청약종합저축 소득공제</strong>
-                  <p className="mt-0.5">무주택 세대주 외국인 근로자의 청약저축 납입액 40% 공제 확인</p>
+                  <strong className="font-semibold text-foreground">{t("tax.step2.title")}</strong>
+                  <p className="mt-0.5">{t("tax.step2.desc")}</p>
                 </div>
               </div>
               <div className="flex items-start gap-2.5 rounded-2xl bg-muted/50 p-3">
                 <Receipt className="size-4 shrink-0 text-signal mt-0.5" />
                 <div>
-                  <strong className="font-semibold text-foreground">3. 19% 단일세율 vs 종합과세 비교</strong>
-                  <p className="mt-0.5">공제 항목 유무에 따라 19% 단일세율 특례 적용이 유리한지 비교</p>
+                  <strong className="font-semibold text-foreground">{t("tax.step3.title")}</strong>
+                  <p className="mt-0.5">{t("tax.step3.desc")}</p>
                 </div>
               </div>
             </div>
@@ -218,10 +255,10 @@ export default function TaxCheckPage() {
               {t("common.step")} {step + 1} / {STEP_TOTAL}
             </span>
             <span className="font-semibold text-primary">
-              {step === 0 && "1. 현재 정보 확인"}
-              {step === 1 && "2. 주택청약저축 확인"}
-              {step === 2 && "3. 세율 선택 확인"}
-              {step === 3 && "4. 최종 확인 결과"}
+              {step === 0 && t("tax.step.step0")}
+              {step === 1 && t("tax.step.step1")}
+              {step === 2 && t("tax.step.step2")}
+              {step === 3 && t("tax.step.step3")}
             </span>
           </div>
           <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted">
@@ -237,29 +274,29 @@ export default function TaxCheckPage() {
           <div className="space-y-4">
             <div className="rounded-3xl border border-border/80 bg-card p-5 shadow-sm space-y-4">
               <h2 className="text-base font-bold text-foreground">
-                현재 체류 및 소득 정보
+                {t("tax.step0.header")}
               </h2>
               <p className="text-xs text-muted-foreground">
-                프로필 및 급여 기록을 토대로 세법상 거주자 요건을 자동 계산합니다.
+                {t("tax.step0.desc")}
               </p>
 
               <div className="space-y-2.5 text-xs">
                 <div className="flex items-center justify-between rounded-2xl bg-muted/40 p-3">
-                  <span className="text-muted-foreground">입국일</span>
+                  <span className="text-muted-foreground">{t("tax.step0.entryDate")}</span>
                   <span className="font-bold text-foreground">
                     {employment?.entryDate?.value ? formatKDate(employment.entryDate.value) : t("common.unknown")}
                   </span>
                 </div>
                 <div className="flex items-center justify-between rounded-2xl bg-muted/40 p-3">
-                  <span className="text-muted-foreground">올해 누적 급여 ({effectiveMonths}개월)</span>
+                  <span className="text-muted-foreground">{t("tax.step0.yearlyPay", { n: effectiveMonths })}</span>
                   <span className="font-bold text-foreground">
                     {won(effectiveYearlyPay)}
                   </span>
                 </div>
                 <div className="flex items-center justify-between rounded-2xl bg-primary/10 p-3 text-primary">
-                  <span className="font-semibold">거주자 판정 상태</span>
+                  <span className="font-semibold">{t("tax.step0.residentStatus")}</span>
                   <span className="font-extrabold">
-                    {cards.find((c) => c.id === "resident")?.status || "판정 중"}
+                    {cards.find((c) => c.id === "resident")?.status || t("tax.step0.evaluating")}
                   </span>
                 </div>
               </div>
@@ -272,13 +309,13 @@ export default function TaxCheckPage() {
           <div className="space-y-4">
             <div className="rounded-3xl border border-border/80 bg-card p-5 shadow-sm space-y-4">
               <h2 className="text-base font-bold text-foreground">
-                주택청약종합저축 소득공제 확인
+                {t("tax.step1.header")}
               </h2>
 
               {/* Q1: 가입 여부 */}
               <div className="space-y-2 pt-2 border-t border-border/60">
                 <p className="text-xs font-bold text-foreground">
-                  1. {t("tax.q.housing")}
+                  {t("tax.step1.q1")}
                 </p>
                 <p className="text-[11px] text-muted-foreground">
                   {t("tax.q.housingHint")}
@@ -288,17 +325,17 @@ export default function TaxCheckPage() {
                     type="button"
                     variant={localTaxProfile.housingSaving === true ? "default" : "outline"}
                     className="rounded-xl text-xs font-semibold"
-                    onClick={() => setLocalTaxProfile((p) => ({ ...p, housingSaving: true }))}
+                    onClick={() => handleUpdateTaxProfile({ housingSaving: true })}
                   >
-                    가입함
+                    {t("tax.step1.q1Yes")}
                   </Button>
                   <Button
                     type="button"
                     variant={localTaxProfile.housingSaving === false ? "default" : "outline"}
                     className="rounded-xl text-xs font-semibold"
-                    onClick={() => setLocalTaxProfile((p) => ({ ...p, housingSaving: false, housingSavingProof: false }))}
+                    onClick={() => handleUpdateTaxProfile({ housingSaving: false, housingSavingProof: false })}
                   >
-                    가입 안 함
+                    {t("tax.step1.q1No")}
                   </Button>
                 </div>
               </div>
@@ -306,7 +343,7 @@ export default function TaxCheckPage() {
               {/* Q2: 무주택 세대주 */}
               <div className="space-y-2 pt-3 border-t border-border/60">
                 <p className="text-xs font-bold text-foreground">
-                  2. {t("tax.q.homeless")}
+                  {t("tax.step1.q2")}
                 </p>
                 <p className="text-[11px] text-muted-foreground">
                   {t("tax.q.homelessHint")}
@@ -316,17 +353,17 @@ export default function TaxCheckPage() {
                     type="button"
                     variant={localTaxProfile.isHomeless === true ? "default" : "outline"}
                     className="rounded-xl text-xs font-semibold"
-                    onClick={() => setLocalTaxProfile((p) => ({ ...p, isHomeless: true }))}
+                    onClick={() => handleUpdateTaxProfile({ isHomeless: true })}
                   >
-                    본인 명의 주택 없음
+                    {t("tax.step1.q2Yes")}
                   </Button>
                   <Button
                     type="button"
                     variant={localTaxProfile.isHomeless === false ? "default" : "outline"}
                     className="rounded-xl text-xs font-semibold"
-                    onClick={() => setLocalTaxProfile((p) => ({ ...p, isHomeless: false }))}
+                    onClick={() => handleUpdateTaxProfile({ isHomeless: false })}
                   >
-                    주택 보유
+                    {t("tax.step1.q2No")}
                   </Button>
                 </div>
               </div>
@@ -335,7 +372,7 @@ export default function TaxCheckPage() {
               {localTaxProfile.housingSaving === true && (
                 <div className="space-y-2 pt-3 border-t border-border/60">
                   <p className="text-xs font-bold text-foreground">
-                    3. {t("tax.q.proof")}
+                    {t("tax.step1.q3")}
                   </p>
                   <p className="text-[11px] text-muted-foreground">
                     {t("tax.q.proofHint")}
@@ -345,17 +382,17 @@ export default function TaxCheckPage() {
                       type="button"
                       variant={localTaxProfile.housingSavingProof === true ? "default" : "outline"}
                       className="rounded-xl text-xs font-semibold"
-                      onClick={() => setLocalTaxProfile((p) => ({ ...p, housingSavingProof: true }))}
+                      onClick={() => handleUpdateTaxProfile({ housingSavingProof: true })}
                     >
-                      발급 가능
+                      {t("tax.step1.q3Yes")}
                     </Button>
                     <Button
                       type="button"
                       variant={localTaxProfile.housingSavingProof === false ? "default" : "outline"}
                       className="rounded-xl text-xs font-semibold"
-                      onClick={() => setLocalTaxProfile((p) => ({ ...p, housingSavingProof: false }))}
+                      onClick={() => handleUpdateTaxProfile({ housingSavingProof: false })}
                     >
-                      발급 불가 / 모름
+                      {t("tax.step1.q3No")}
                     </Button>
                   </div>
                 </div>
@@ -369,12 +406,12 @@ export default function TaxCheckPage() {
           <div className="space-y-4">
             <div className="rounded-3xl border border-border/80 bg-card p-5 shadow-sm space-y-4">
               <h2 className="text-base font-bold text-foreground">
-                세율 적용 방식 확인
+                {t("tax.step2.header")}
               </h2>
 
               <div className="space-y-2 pt-2 border-t border-border/60">
                 <p className="text-xs font-bold text-foreground">
-                  {t("tax.q.deduct")}
+                  {t("tax.step2.q1")}
                 </p>
                 <p className="text-[11px] text-muted-foreground">
                   {t("tax.q.deductHint")}
@@ -384,17 +421,17 @@ export default function TaxCheckPage() {
                     type="button"
                     variant={localTaxProfile.usesDeductions === true ? "default" : "outline"}
                     className="rounded-xl text-xs font-semibold"
-                    onClick={() => setLocalTaxProfile((p) => ({ ...p, usesDeductions: true }))}
+                    onClick={() => handleUpdateTaxProfile({ usesDeductions: true })}
                   >
-                    소득공제 활용 (종합과세)
+                    {t("tax.step2.q1Yes")}
                   </Button>
                   <Button
                     type="button"
                     variant={localTaxProfile.usesDeductions === false ? "default" : "outline"}
                     className="rounded-xl text-xs font-semibold"
-                    onClick={() => setLocalTaxProfile((p) => ({ ...p, usesDeductions: false }))}
+                    onClick={() => handleUpdateTaxProfile({ usesDeductions: false })}
                   >
-                    19% 단일세율 검토
+                    {t("tax.step2.q1No")}
                   </Button>
                 </div>
               </div>

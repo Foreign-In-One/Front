@@ -267,7 +267,13 @@ export function PayCycleProvider({ children }: { children: ReactNode }) {
         const existingRecordKeys = new Set(mappedRecords.map((r) => r.period || r.id));
         const preservedRecords = mappedRecords.map((r) => {
           const local = prevRecordsMap.get(r.id) || (r.period ? prevRecordsByPeriod.get(r.period) : undefined);
-          return local ? { ...r, ...local, analysis: r.analysis || local.analysis } : r;
+          return local
+            ? {
+                ...r,
+                documents: local.documents || r.documents,
+                checkedAt: r.checkedAt || local.checkedAt,
+              }
+            : r;
         });
         const mergedRecords = [
           ...preservedRecords,

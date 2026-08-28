@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   CheckCircle2,
   FileText,
@@ -48,7 +48,6 @@ import type {
 } from "@/lib/paycycle/types";
 import { formatKDate, monthLabel, periodOf, uid, won } from "@/lib/paycycle/format";
 import { readDocument } from "@/services/ocr";
-import { savePayCheckResult } from "@/lib/paycycle/result-storage";
 import {
   analyzePaycheckApi,
   getMockBankTransactionsApi,
@@ -339,8 +338,12 @@ export default function PayCheckPage() {
   const fetchBankSalary = useCallback(async (targetPeriod: string) => {
     setSyncingBank(true);
     try {
+      const [yearStr, monthStr] = targetPeriod.split("-");
+      const year = Number(yearStr);
+      const month = Number(monthStr);
+      const lastDay = new Date(year, month, 0).getDate();
       const from = `${targetPeriod}-01`;
-      const to = `${targetPeriod}-31`;
+      const to = `${targetPeriod}-${String(lastDay).padStart(2, "0")}`;
       const res = await getMockBankTransactionsApi(from, to);
       const txs = res.transactions.resList || [];
       const periodCompact = targetPeriod.replace(/[^0-9]/g, "");
@@ -509,19 +512,73 @@ export default function PayCheckPage() {
     return undefined;
   }, [activePaycheckId, rec]);
 
-  if (!hydrated) {
-    return (
-      <AppShell title={t("pay.title")}>
-        <p className="text-sm text-muted-foreground">…</p>
-      </AppShell>
-    );
-  }
-
   const [documentIds, setDocumentIds] = useState<Record<DocKind, number | undefined>>({
     contract: undefined,
     statement: undefined,
     deposit: undefined,
   });
+
+  const patchTimerRef = useRef<Record<DocKind, NodeJS.Timeout | undefined>>({
+    contract: undefined,
+    statement: undefined,
+    deposit: undefined,
+  });
+
+  const syncDocumentExtractedData = useCallback((kind: DocKind, fields: DocFields) => {
+    const docId = documentIds[kind];
+    if (!docId) return;
+
+    if (patchTimerRef.current[kind]) {
+      clearTimeout(patchTimerRef.current[kind]);
+    }
+
+    patchTimerRef.current[kind] = setTimeout(() => {
+      void updateDocumentExtractedDataApi(docId, {
+        payPeriod: fields.period,
+        baseSalary: fields.basePay ?? undefined,
+        overtimeAllowance: fields.allowances ?? undefined,
+        deduction: fields.deductions ?? undefined,
+        netPay: fields.netPay ?? undefined,
+        paymentDate: fields.payDate ?? undefined,
+        payday: fields.payDay ?? undefined,
+      });
+    }, 400);
+  }, [documentIds]);
+
+  const updateField = useCallback((kind: DocKind, key: keyof DocFields, val: any) => {
+    let nextFieldsForSync: DocFields | undefined;
+    setDocs((prev) => {
+      const current = prev[kind] ?? defaultDoc(kind, period);
+      const nextFields = { ...current.fields, [key]: val };
+      nextFieldsForSync = nextFields;
+      return {
+        ...prev,
+        [kind]: {
+          ...current,
+          fields: nextFields,
+        },
+      };
+    });
+
+    if (nextFieldsForSync) {
+      syncDocumentExtractedData(kind, nextFieldsForSync);
+    }
+  }, [period, syncDocumentExtractedData]);
+
+  const applyCandidate = useCallback(
+    (kind: DocKind, cand: CandidateAmountDto) => {
+      const targetField: keyof Omit<DocFields, "period"> =
+        cand.targetField || (kind === "contract" ? "basePay" : "netPay");
+      updateField(kind, targetField, cand.amount);
+      toast.success(
+        t("pay.candidate.appliedToast", {
+          field: t(FIELD_LABEL_KEYS[targetField]),
+          amount: won(cand.amount),
+        })
+      );
+    },
+    [t, updateField]
+  );
 
   const handleUpload = async (kind: DocKind, file: File) => {
     setReading((p) => ({ ...p, [kind]: true }));
@@ -558,49 +615,13 @@ export default function PayCheckPage() {
     reader.readAsDataURL(file);
   };
 
-  const updateField = (kind: DocKind, key: keyof DocFields, val: any) => {
-    setDocs((prev) => {
-      const current = prev[kind] ?? defaultDoc(kind, period);
-      const nextFields = { ...current.fields, [key]: val };
-
-      // 백엔드 동기화 (PATCH /api/documents/{documentId}/extracted-data)
-      const docId = documentIds[kind];
-      if (docId) {
-        void updateDocumentExtractedDataApi(docId, {
-          payPeriod: nextFields.period,
-          baseSalary: nextFields.basePay ?? undefined,
-          overtimeAllowance: nextFields.allowances ?? undefined,
-          deduction: nextFields.deductions ?? undefined,
-          netPay: nextFields.netPay ?? undefined,
-          paymentDate: nextFields.payDate ?? undefined,
-          payday: nextFields.payDay ?? undefined,
-        });
-      }
-
-      return {
-        ...prev,
-        [kind]: {
-          ...current,
-          fields: nextFields,
-        },
-      };
-    });
-  };
-
-  const applyCandidate = useCallback(
-    (kind: DocKind, cand: CandidateAmountDto) => {
-      const targetField: keyof Omit<DocFields, "period"> =
-        cand.targetField || (kind === "contract" ? "basePay" : "netPay");
-      updateField(kind, targetField, cand.amount);
-      toast.success(
-        t("pay.candidate.appliedToast", {
-          field: t(FIELD_LABEL_KEYS[targetField]),
-          amount: won(cand.amount),
-        })
-      );
-    },
-    [t]
-  );
+  if (!hydrated) {
+    return (
+      <AppShell title={t("pay.title")}>
+        <p className="text-sm text-muted-foreground">…</p>
+      </AppShell>
+    );
+  }
 
   const manualDrawer = (
     <Drawer open={editingKind !== null} onOpenChange={(open) => !open && setEditingKind(null)}>
@@ -770,15 +791,6 @@ export default function PayCheckPage() {
       findingCount: result.findings.length,
       documents: docs,
       employment: state.employment,
-    });
-
-    savePayCheckResult({
-      payPeriod: period,
-      workplace: state.employment?.workplace ?? "",
-      status: result.overallStatus,
-      differenceAmount: result.findings[0]?.difference ?? null,
-      paidAmount: docs.deposit?.fields.netPay ?? null,
-      findingCount: result.findings.length,
     });
 
     // 캘린더에 급여 확인 일정 자동 등록

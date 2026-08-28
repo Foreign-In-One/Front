@@ -185,12 +185,14 @@ export function removeSavedResult(id: string): boolean {
 }
 
 export interface NewExitCheckResult {
+  profileSignature?: string;
   departureDate: string | null;
   readyCount: number;
   totalCount: number;
 }
 
 export interface NewPayCheckResult {
+  profileSignature?: string;
   payPeriod: string;
   workplace: string;
   status?: string;
@@ -204,7 +206,7 @@ export interface NewPayCheckResult {
  * 이후 `/records`와 `/dashboard`는 kind === "tax"인 항목을 읽으면 됩니다.
  */
 export function saveTaxCheckResult(
-  input: NewTaxCheckResult,
+  input: NewTaxCheckResult & { profileSignature?: string },
 ): SavedTaxCheckResult | null {
   if (typeof window === 'undefined') return null;
 
@@ -213,7 +215,7 @@ export function saveTaxCheckResult(
     userId: currentUserId(),
     kind: 'tax',
     createdAt: new Date().toISOString(),
-    profileSignature: '',
+    profileSignature: input.profileSignature ?? '',
     year: input.year,
     yearlyPay: input.yearlyPay,
     monthsRecorded: input.monthsRecorded,
@@ -262,7 +264,7 @@ export function saveExitCheckResult(
     userId: currentUserId(),
     kind: 'exit',
     createdAt: new Date().toISOString(),
-    profileSignature: '',
+    profileSignature: input.profileSignature ?? '',
     departureDate: input.departureDate,
     readyCount: input.readyCount,
     totalCount: input.totalCount,
@@ -291,7 +293,7 @@ export function savePayCheckResult(
     userId: currentUserId(),
     kind: 'pay',
     createdAt: new Date().toISOString(),
-    profileSignature: '',
+    profileSignature: input.profileSignature ?? '',
     payPeriod: input.payPeriod,
     workplace: input.workplace,
     status: input.status,

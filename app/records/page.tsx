@@ -26,23 +26,23 @@ import {
   type SavedResult,
 } from "@/lib/paycycle/result-storage";
 import { formatKDate, won } from "@/lib/paycycle/format";
-import { useT } from "@/i18n";
+import { useT, type TKey } from "@/i18n";
 import { cn } from "@/lib/utils";
 
 type FilterKind = ResultKind | "all";
 
-const TABS: { key: FilterKind; labelKey: string }[] = [
+const TABS: { key: FilterKind; labelKey: TKey }[] = [
   { key: "all", labelKey: "records.all" },
   { key: "pay", labelKey: "records.pay" },
   { key: "tax", labelKey: "records.tax" },
   { key: "exit", labelKey: "records.exit" },
 ];
 
-const KIND_META = {
-  pay: { label: "급여 확인", icon: Wallet, target: "/paycheck" },
-  tax: { label: "세금 확인", icon: Receipt, target: "/taxcheck" },
-  exit: { label: "출국 정산", icon: Plane, target: "/exitcheck" },
-} as const;
+const KIND_META: Record<ResultKind, { labelKey: TKey; icon: typeof Wallet; target: string }> = {
+  pay: { labelKey: "tab.pay", icon: Wallet, target: "/paycheck" },
+  tax: { labelKey: "tab.tax", icon: Receipt, target: "/taxcheck" },
+  exit: { labelKey: "tab.exit", icon: Plane, target: "/exitcheck" },
+};
 
 export default function RecordsPage() {
   const [filter, setFilter] = useState<FilterKind>("all");
@@ -73,10 +73,11 @@ export default function RecordsPage() {
   );
 
   const handleDelete = (result: SavedResult) => {
-    if (!window.confirm(`${KIND_META[result.kind].label} 기록을 삭제할까요?`)) return;
+    const label = t(KIND_META[result.kind].labelKey);
+    if (!window.confirm(`${label} ${t("common.delete")}?`)) return;
 
     if (!removeSavedResult(result.id)) {
-      toast.error("기록을 삭제하지 못했습니다.");
+      toast.error(t("common.delete"));
       return;
     }
 
@@ -114,7 +115,7 @@ export default function RecordsPage() {
                     : "text-muted-foreground hover:text-foreground"
                 )}
               >
-                <span>{t(tab.labelKey as any)}</span>
+                <span>{t(tab.labelKey)}</span>
                 <span
                   className={cn(
                     "rounded-md px-1.5 py-0.5 text-[10px]",
@@ -140,19 +141,19 @@ export default function RecordsPage() {
                 href="/paycheck"
                 className="rounded-xl bg-secondary px-3 py-1.5 text-xs font-semibold text-secondary-foreground hover:bg-secondary/80"
               >
-                급여 확인하러 가기
+                {t("home.goPay")}
               </Link>
               <Link
                 href="/taxcheck"
                 className="rounded-xl bg-secondary px-3 py-1.5 text-xs font-semibold text-secondary-foreground hover:bg-secondary/80"
               >
-                세금 점검하기
+                {t("tab.tax")}
               </Link>
               <Link
                 href="/exitcheck"
                 className="rounded-xl bg-secondary px-3 py-1.5 text-xs font-semibold text-secondary-foreground hover:bg-secondary/80"
               >
-                출국 정산하기
+                {t("tab.exit")}
               </Link>
             </div>
           </div>
@@ -177,7 +178,7 @@ export default function RecordsPage() {
                       <div>
                         <div className="flex items-center gap-2">
                           <span className="text-xs font-bold text-foreground">
-                            {meta.label}
+                            {t(meta.labelKey as any)}
                           </span>
                           <span className="text-[11px] text-muted-foreground">
                             {t("records.savedAt", {
@@ -224,7 +225,7 @@ export default function RecordsPage() {
                         onClick={() => setExpandedId(isExpanded ? null : result.id)}
                         className="flex w-full items-center justify-between rounded-xl bg-muted/40 px-3 py-2 text-xs font-semibold text-muted-foreground hover:text-foreground"
                       >
-                        <span>세부 점검 카드 ({result.cards.length}개)</span>
+                        <span>{t("records.detailsCard", { n: result.cards.length })}</span>
                         <ChevronDown
                           className={cn("size-4 transition-transform", isExpanded && "rotate-180")}
                         />
@@ -250,7 +251,7 @@ export default function RecordsPage() {
                               </p>
                               {card.nextActions.length > 0 && (
                                 <p className="text-[11px] font-medium text-foreground">
-                                  다음 행동: {card.nextActions[0]}
+                                  {t("records.nextActionPrefix", { action: card.nextActions[0] })}
                                 </p>
                               )}
                             </div>

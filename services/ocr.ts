@@ -62,10 +62,10 @@ export async function readDocument(input: {
         documentId: docId,
         mock: uploadRes.isMock || ocrRes.isMock,
         fields,
-        candidateAmounts: ext.candidateAmounts || (ext.baseSalary || ext.netPay || ext.overtimeAllowance || ext.deduction ? [
+        candidateAmounts: ext.candidateAmounts || (ext.baseSalary || ext.netPay || ext.overtimeAllowance || ext.deduction || ext.totalPayment ? [
           ...(ext.baseSalary ? [{ label: "기본급", amount: ext.baseSalary, targetField: "basePay" as const }] : []),
           ...(ext.overtimeAllowance ? [{ label: "연장근로수당", amount: ext.overtimeAllowance, targetField: "allowances" as const }] : []),
-          ...(ext.totalPayment ? [{ label: "지급총액", amount: ext.totalPayment, targetField: "netPay" as const }] : []),
+          ...(ext.totalPayment ? [{ label: "지급총액", amount: ext.totalPayment }] : []),
           ...(ext.deduction ? [{ label: "공제총액", amount: ext.deduction, targetField: "deductions" as const }] : []),
           ...(ext.netPay ? [{ label: "실지급액", amount: ext.netPay, targetField: "netPay" as const }] : []),
         ] : undefined),

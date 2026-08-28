@@ -26,7 +26,7 @@ import type { ExitClaim, ExitProfile } from "@/lib/paycycle/types";
 const STEP_TOTAL = 4;
 
 export default function ExitCheckPage() {
-  const { state, hydrated, updateExitProfile } = usePayCycle();
+  const { state, hydrated, updateExitProfile, signature } = usePayCycle();
   const { t } = useT();
 
   const [step, setStep] = useState(-1);
@@ -38,6 +38,30 @@ export default function ExitCheckPage() {
     hasOwnAccount: state.exitProfile?.hasOwnAccount ?? null,
   }));
 
+  // Context의 exitProfile이 hydration된 이후에만 localProfile과 동기화
+  useEffect(() => {
+    if (hydrated && state.exitProfile) {
+      setLocalProfile({
+        hasInsuranceRecord: state.exitProfile.hasInsuranceRecord ?? null,
+        pensionDeducted: state.exitProfile.pensionDeducted ?? null,
+        hasExitProof: state.exitProfile.hasExitProof ?? null,
+        hasRecentPayslip: state.exitProfile.hasRecentPayslip ?? null,
+        hasOwnAccount: state.exitProfile.hasOwnAccount ?? null,
+      });
+    }
+  }, [hydrated, state.exitProfile]);
+
+  // 프로필 옵션 변경 및 전역 state.exitProfile 실시간 동기화
+  const handleUpdateExitProfile = (patch: Partial<ExitProfile>) => {
+    setLocalProfile((prev) => {
+      const next = { ...prev, ...patch };
+      if (hydrated) {
+        updateExitProfile(next);
+      }
+      return next;
+    });
+  };
+
   const savedRef = useRef<boolean>(false);
 
   const employment = state.employment;
@@ -48,8 +72,14 @@ export default function ExitCheckPage() {
     if (!employment?.workStartDate?.value) return null;
     const start = new Date(employment.workStartDate.value);
     const end = employment.exitDate?.value ? new Date(employment.exitDate.value) : new Date();
-    const months = (end.getFullYear() - start.getFullYear()) * 12 + (end.getMonth() - start.getMonth());
-    return Math.max(1, months);
+    if (isNaN(start.getTime()) || isNaN(end.getTime())) return null;
+    if (end < start) return null; // 출국일이 입사일보다 빠른 경우 indeterminate
+
+    let months = (end.getFullYear() - start.getFullYear()) * 12 + (end.getMonth() - start.getMonth());
+    if (end.getDate() < start.getDate()) {
+      months -= 1;
+    }
+    return Math.max(0, months);
   }, [employment]);
 
   const claims: ExitClaim[] = useMemo(() => {
@@ -80,17 +110,20 @@ export default function ExitCheckPage() {
 
   // 결과 화면 도달 시 자동 저장
   useEffect(() => {
-    if (step === 3 && !savedRef.current) {
-      savedRef.current = true;
-      saveExitCheckResult({
+    if (step === 3 && !savedRef.current && hydrated) {
+      const res = saveExitCheckResult({
+        profileSignature: signature,
         departureDate,
         readyCount,
         totalCount: claims.length,
       });
-      updateExitProfile(localProfile);
-      toast.success(t("exit.saved"));
+      if (res) {
+        savedRef.current = true;
+        updateExitProfile(localProfile);
+        toast.success(t("exit.saved"));
+      }
     }
-  }, [step, departureDate, readyCount, claims.length, localProfile, updateExitProfile, t]);
+  }, [step, departureDate, readyCount, claims.length, localProfile, updateExitProfile, signature, hydrated, t]);
 
   const handleCopyResult = () => {
     const text = claims
@@ -153,28 +186,28 @@ export default function ExitCheckPage() {
           {/* 주요 확인 대상 안내 카드 */}
           <div className="rounded-3xl border border-border/80 bg-card p-5 shadow-sm space-y-3">
             <h3 className="text-sm font-bold text-foreground">
-              {t("landing.f3.text")}
+              {t("exit.checklist.title")}
             </h3>
             <div className="grid gap-2.5 text-xs text-muted-foreground">
               <div className="flex items-start gap-2.5 rounded-2xl bg-muted/50 p-3">
                 <ShieldCheck className="size-4 shrink-0 text-primary mt-0.5" />
                 <div>
-                  <strong className="font-semibold text-foreground">출국만기보험 (퇴직금 대체)</strong>
-                  <p className="mt-0.5">1년 이상 근무 후 출국 시 사업주 대신 삼성화재에서 직접 지급</p>
+                  <strong className="font-semibold text-foreground">{t("exit.check1.title")}</strong>
+                  <p className="mt-0.5">{t("exit.check1.desc")}</p>
                 </div>
               </div>
               <div className="flex items-start gap-2.5 rounded-2xl bg-muted/50 p-3">
                 <Plane className="size-4 shrink-0 text-info mt-0.5" />
                 <div>
-                  <strong className="font-semibold text-foreground">귀국비용보험</strong>
-                  <p className="mt-0.5">입국 초기 본인이 납부한 귀국 항공료 보증금 환급</p>
+                  <strong className="font-semibold text-foreground">{t("exit.check2.title")}</strong>
+                  <p className="mt-0.5">{t("exit.check2.desc")}</p>
                 </div>
               </div>
               <div className="flex items-start gap-2.5 rounded-2xl bg-muted/50 p-3">
                 <Wallet className="size-4 shrink-0 text-signal mt-0.5" />
                 <div>
-                  <strong className="font-semibold text-foreground">국민연금 반환일시금</strong>
-                  <p className="mt-0.5">상호주의 협정국 국적 근로자 대상 납부 원금+이자 일시 환급</p>
+                  <strong className="font-semibold text-foreground">{t("exit.check3.title")}</strong>
+                  <p className="mt-0.5">{t("exit.check3.desc")}</p>
                 </div>
               </div>
             </div>
@@ -223,10 +256,10 @@ export default function ExitCheckPage() {
           <div className="space-y-4">
             <div className="rounded-3xl border border-border/80 bg-card p-5 shadow-sm space-y-4">
               <h2 className="text-base font-bold text-foreground">
-                {t("exit.step.info")}
+                {t("exit.step0.header")}
               </h2>
               <p className="text-xs text-muted-foreground">
-                프로필에 등록된 정보를 바탕으로 출국 정산 대상 여부를 진단합니다.
+                {t("exit.step0.desc")}
               </p>
 
               <div className="space-y-2.5 text-xs">
@@ -249,9 +282,9 @@ export default function ExitCheckPage() {
                   </span>
                 </div>
                 <div className="flex items-center justify-between rounded-2xl bg-primary/10 p-3 text-primary">
-                  <span className="font-semibold">예상 총 근속 기간</span>
+                  <span className="font-semibold">{t("exit.step0.totalWorkPeriod")}</span>
                   <span className="font-extrabold">
-                    {totalMonths !== null ? `${totalMonths}개월` : t("common.unknownValue")}
+                    {totalMonths !== null ? t("home.monthsRecorded", { n: totalMonths }) : t("common.unknownValue")}
                   </span>
                 </div>
               </div>
@@ -270,7 +303,7 @@ export default function ExitCheckPage() {
               {/* Q1: 출국만기보험 */}
               <div className="space-y-2 pt-2 border-t border-border/60">
                 <p className="text-xs font-bold text-foreground">
-                  1. {t("exit.q.insurance")}
+                  {t("exit.q1.title")}
                 </p>
                 <p className="text-[11px] text-muted-foreground">
                   {t("exit.q.insuranceHint")}
@@ -280,17 +313,17 @@ export default function ExitCheckPage() {
                     type="button"
                     variant={localProfile.hasInsuranceRecord === true ? "default" : "outline"}
                     className="rounded-xl text-xs font-semibold"
-                    onClick={() => setLocalProfile((p) => ({ ...p, hasInsuranceRecord: true }))}
+                    onClick={() => handleUpdateExitProfile({ hasInsuranceRecord: true })}
                   >
-                    확인 완료 (납입 중)
+                    {t("exit.q1.optYes")}
                   </Button>
                   <Button
                     type="button"
                     variant={localProfile.hasInsuranceRecord === false ? "default" : "outline"}
                     className="rounded-xl text-xs font-semibold"
-                    onClick={() => setLocalProfile((p) => ({ ...p, hasInsuranceRecord: false }))}
+                    onClick={() => handleUpdateExitProfile({ hasInsuranceRecord: false })}
                   >
-                    아직 확인 안 함 / 모름
+                    {t("exit.q1.optNo")}
                   </Button>
                 </div>
               </div>
@@ -298,7 +331,7 @@ export default function ExitCheckPage() {
               {/* Q2: 항공권 예매 여부 */}
               <div className="space-y-2 pt-3 border-t border-border/60">
                 <p className="text-xs font-bold text-foreground">
-                  2. {t("exit.q.ticket")}
+                  {t("exit.q2.title")}
                 </p>
                 <p className="text-[11px] text-muted-foreground">
                   {t("exit.q.ticketHint")}
@@ -308,17 +341,17 @@ export default function ExitCheckPage() {
                     type="button"
                     variant={localProfile.hasExitProof === true ? "default" : "outline"}
                     className="rounded-xl text-xs font-semibold"
-                    onClick={() => setLocalProfile((p) => ({ ...p, hasExitProof: true }))}
+                    onClick={() => handleUpdateExitProfile({ hasExitProof: true })}
                   >
-                    예매 완료
+                    {t("exit.q2.optYes")}
                   </Button>
                   <Button
                     type="button"
                     variant={localProfile.hasExitProof === false ? "default" : "outline"}
                     className="rounded-xl text-xs font-semibold"
-                    onClick={() => setLocalProfile((p) => ({ ...p, hasExitProof: false }))}
+                    onClick={() => handleUpdateExitProfile({ hasExitProof: false })}
                   >
-                    아직 예매 전
+                    {t("exit.q2.optNo")}
                   </Button>
                 </div>
               </div>
@@ -326,7 +359,7 @@ export default function ExitCheckPage() {
               {/* Q3: 본인 계좌 */}
               <div className="space-y-2 pt-3 border-t border-border/60">
                 <p className="text-xs font-bold text-foreground">
-                  3. {t("exit.q.account")}
+                  {t("exit.q3.title")}
                 </p>
                 <p className="text-[11px] text-muted-foreground">
                   {t("exit.q.accountHint")}
@@ -336,17 +369,17 @@ export default function ExitCheckPage() {
                     type="button"
                     variant={localProfile.hasOwnAccount === true ? "default" : "outline"}
                     className="rounded-xl text-xs font-semibold"
-                    onClick={() => setLocalProfile((p) => ({ ...p, hasOwnAccount: true }))}
+                    onClick={() => handleUpdateExitProfile({ hasOwnAccount: true })}
                   >
-                    준비됨
+                    {t("exit.q3.optYes")}
                   </Button>
                   <Button
                     type="button"
                     variant={localProfile.hasOwnAccount === false ? "default" : "outline"}
                     className="rounded-xl text-xs font-semibold"
-                    onClick={() => setLocalProfile((p) => ({ ...p, hasOwnAccount: false }))}
+                    onClick={() => handleUpdateExitProfile({ hasOwnAccount: false })}
                   >
-                    준비 안 됨
+                    {t("exit.q3.optNo")}
                   </Button>
                 </div>
               </div>
@@ -364,7 +397,7 @@ export default function ExitCheckPage() {
 
               <div className="space-y-2 pt-2 border-t border-border/60">
                 <p className="text-xs font-bold text-foreground">
-                  {t("exit.q.pension")}
+                  {t("exit.pension.qTitle")}
                 </p>
                 <p className="text-[11px] text-muted-foreground">
                   {t("exit.q.pensionHint")}
@@ -374,17 +407,17 @@ export default function ExitCheckPage() {
                     type="button"
                     variant={localProfile.pensionDeducted === true ? "default" : "outline"}
                     className="rounded-xl text-xs font-semibold"
-                    onClick={() => setLocalProfile((p) => ({ ...p, pensionDeducted: true }))}
+                    onClick={() => handleUpdateExitProfile({ pensionDeducted: true })}
                   >
-                    예 (매월 공제됨)
+                    {t("exit.pension.optYes")}
                   </Button>
                   <Button
                     type="button"
                     variant={localProfile.pensionDeducted === false ? "default" : "outline"}
                     className="rounded-xl text-xs font-semibold"
-                    onClick={() => setLocalProfile((p) => ({ ...p, pensionDeducted: false }))}
+                    onClick={() => handleUpdateExitProfile({ pensionDeducted: false })}
                   >
-                    아니오 / 가입 안 됨
+                    {t("exit.pension.optNo")}
                   </Button>
                 </div>
               </div>

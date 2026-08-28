@@ -632,7 +632,7 @@ export async function readDocumentOcrApi(req: OcrRequestDto): Promise<OcrRespons
     candidates = [
       { label: "기본급", amount: 2_200_000, targetField: "basePay" },
       { label: "식대보조", amount: 150_000, targetField: "allowances" },
-      { label: "월급여총액", amount: 2_350_000, targetField: "basePay" },
+      { label: "월급여총액", amount: 2_350_000 },
     ];
   } else if (req.kind === "statement") {
     mockFields = {
@@ -646,7 +646,7 @@ export async function readDocumentOcrApi(req: OcrRequestDto): Promise<OcrRespons
     candidates = [
       { label: "기본급", amount: 2_200_000, targetField: "basePay" },
       { label: "연장근로수당", amount: 380_000, targetField: "allowances" },
-      { label: "지급총액", amount: 2_580_000, targetField: "netPay" },
+      { label: "지급총액", amount: 2_580_000 },
       { label: "공제총액", amount: 200_000, targetField: "deductions" },
       { label: "실지급액", amount: 2_380_000, targetField: "netPay" },
     ];

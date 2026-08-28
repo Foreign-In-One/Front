@@ -48,21 +48,28 @@ export async function fetchAiPaycheckAnalysis(payload: {
       period: payload.period,
     });
 
-    if (backendRes?.data) {
+    if (backendRes?.data && !backendRes.isMock) {
       const d = backendRes.data;
       const firstCard = d.employerQuestionCards?.[0];
       const localFallback = generateLocalAiPaycheckAnalysis(payload);
 
       return {
         ok: true,
-        isMock: backendRes.isMock,
+        isMock: false,
         data: {
           headline: d.summary || localFallback.data.headline,
           summary: d.summary || localFallback.data.summary,
           causes:
             d.reasons && d.reasons.length > 0
               ? d.reasons.map((r, i) => ({
-                  title: `확인 항목 ${i + 1}`,
+                  title:
+                    payload.locale === "en"
+                      ? `Item ${i + 1}`
+                      : payload.locale === "vi"
+                      ? `Mục ${i + 1}`
+                      : payload.locale === "zh"
+                      ? `确认项 ${i + 1}`
+                      : `확인 항목 ${i + 1}`,
                   description: r,
                   category: getCategoryFromFinding(payload.finding),
                 }))

@@ -19,10 +19,19 @@ import { AppShell } from "@/components/app-shell";
 import { Button } from "@/components/ui/button";
 import { usePayCycle } from "@/state/paycycle-context";
 import { useT } from "@/i18n";
-import { formatKDate, won } from "@/lib/paycycle/format";
+import { formatKDate, isoDate, won } from "@/lib/paycycle/format";
 import { listSavedResults, type SavedResult } from "@/lib/paycycle/result-storage";
 import { dDay } from "@/lib/paycycle/rule-engine";
+import type { EventType } from "@/lib/paycycle/types";
 import { cn } from "@/lib/utils";
+
+const EVENT_TYPE_LABEL_KEY: Record<EventType, string> = {
+  PAYDAY: "cal.type.payday",
+  PAYCHECK: "cal.type.paycheck",
+  TAX: "cal.type.tax",
+  EXIT: "cal.type.exit",
+  PERSONAL: "cal.type.personal",
+};
 
 export default function DashboardPage() {
   const { state, hydrated, yearlyPay, monthsRecorded } = usePayCycle();
@@ -50,29 +59,30 @@ export default function DashboardPage() {
   const displayYearlyPay =
     yearlyPay > 0
       ? yearlyPay
-      : latestTaxResult && "yearlyPay" in latestTaxResult
+      : latestTaxResult && "yearlyPay" in latestTaxResult && latestTaxResult.yearlyPay
         ? latestTaxResult.yearlyPay
-        : 28560000;
+        : null;
 
   const displayMonths =
     monthsRecorded > 0
       ? monthsRecorded
-      : latestTaxResult && "monthsRecorded" in latestTaxResult
+      : latestTaxResult && "monthsRecorded" in latestTaxResult && latestTaxResult.monthsRecorded
         ? latestTaxResult.monthsRecorded
-        : 12;
+        : null;
 
   const exitIso =
     employment?.exitDate?.value && !employment.exitDate.unknown
       ? employment.exitDate.value
       : null;
 
-  // 다가오는 일정 3개
+  // 다가오는 일정 3개 (오늘 포함 이후 일정만)
+  const today = isoDate(new Date());
   const upcomingEvents = useMemo(() => {
     return [...state.events]
-      .filter((e) => !e.completed)
+      .filter((e) => !e.completed && e.date >= today)
       .sort((a, b) => a.date.localeCompare(b.date))
       .slice(0, 3);
-  }, [state.events]);
+  }, [state.events, today]);
 
   if (!hydrated) {
     return (
@@ -84,10 +94,12 @@ export default function DashboardPage() {
     );
   }
 
+  const defaultNickname = profile?.nickname || t("common.unknown");
+
   return (
     <AppShell
       title={t("tab.home")}
-      subtitle={t("home.myRights", { name: profile?.nickname || "민수" })}
+      subtitle={t("home.myRights", { name: defaultNickname })}
     >
       <div className="space-y-5">
         {/* 1. 상단 연간 급여 히어로 카드 (딥블루 그라데이션) */}
@@ -96,20 +108,32 @@ export default function DashboardPage() {
             <span className="text-xs font-semibold tracking-wider uppercase opacity-80">
               {t("home.yearly")}
             </span>
-            <span className="rounded-xl bg-white/15 px-2.5 py-1 text-xs font-bold backdrop-blur">
-              {t("home.monthsRecorded", { n: displayMonths })}
-            </span>
+            {displayMonths !== null ? (
+              <span className="rounded-xl bg-white/15 px-2.5 py-1 text-xs font-bold backdrop-blur">
+                {t("home.monthsRecorded", { n: displayMonths })}
+              </span>
+            ) : (
+              <span className="rounded-xl bg-white/15 px-2.5 py-1 text-xs font-bold backdrop-blur">
+                {t("common.unknownValue")}
+              </span>
+            )}
           </div>
 
           <div className="mt-3 flex items-baseline gap-2">
-            <span className="text-3xl font-extrabold tracking-tight">
-              {won(displayYearlyPay)}
-            </span>
+            {displayYearlyPay !== null ? (
+              <span className="text-3xl font-extrabold tracking-tight">
+                {won(displayYearlyPay)}
+              </span>
+            ) : (
+              <span className="text-xl font-bold tracking-tight text-white/90">
+                {t("home.noSalaryRecorded")}
+              </span>
+            )}
           </div>
 
           <p className="mt-1 text-xs text-white/70">
             {employment?.workplace ? `${employment.workplace} · ` : ""}
-            {employment?.payDay ? `매월 ${employment.payDay}일 급여 지급` : ""}
+            {employment?.payDay ? t("home.paydayInfo", { day: employment.payDay }) : ""}
           </p>
 
           <div className="mt-5 flex gap-2 pt-3 border-t border-white/15">
@@ -133,7 +157,7 @@ export default function DashboardPage() {
         {/* 2. 3대 금융권리 상태 카드 (급여, 세금, 출국) */}
         <section className="space-y-3">
           <h2 className="text-sm font-bold text-foreground">
-            3대 금융권리 확인 상태
+            {t("home.sec.financial")}
           </h2>
 
           <div className="grid gap-3">
@@ -152,17 +176,17 @@ export default function DashboardPage() {
                       {t("tab.pay")} (PayCheck)
                     </span>
                     <span className="rounded-lg bg-signal/15 px-2 py-0.5 text-[10px] font-bold text-signal">
-                      3중 대조 연동
+                      {t("home.badge.tripleCheck")}
                     </span>
                   </div>
                   <p className="mt-0.5 text-xs text-muted-foreground">
                     {latestPayRecord
                       ? `${latestPayRecord.period} · ${
                           latestPayRecord.analysis.overallStatus === "MATCH"
-                            ? "정상 일치"
-                            : "설명 필요"
+                            ? t("home.paycheckMatch")
+                            : t("home.paycheckNeedsAction")
                         }`
-                      : "최근 급여 내역을 대조해 보세요."}
+                      : t("home.paycheckLead")}
                   </p>
                 </div>
               </div>
@@ -184,13 +208,16 @@ export default function DashboardPage() {
                       {t("tab.tax")} (TaxCheck)
                     </span>
                     <span className="rounded-lg bg-purple-500/15 px-2 py-0.5 text-[10px] font-bold text-purple-700 dark:text-purple-300">
-                      연말정산
+                      {t("tab.tax")}
                     </span>
                   </div>
                   <p className="mt-0.5 text-xs text-muted-foreground">
                     {latestTaxResult && "applicableCount" in latestTaxResult
-                      ? `적용 가능 ${latestTaxResult.applicableCount}개 · 자료 필요 ${latestTaxResult.needsActionCount}개`
-                      : "거주자 판정 및 청약·세율 혜택 점검"}
+                      ? t("home.taxResultLine", {
+                          applicable: latestTaxResult.applicableCount,
+                          needsAction: latestTaxResult.needsActionCount,
+                        })
+                      : t("home.taxLead")}
                   </p>
                 </div>
               </div>
@@ -217,8 +244,11 @@ export default function DashboardPage() {
                   </div>
                   <p className="mt-0.5 text-xs text-muted-foreground">
                     {latestExitResult && "readyCount" in latestExitResult
-                      ? `준비 완료 ${latestExitResult.readyCount}/${latestExitResult.totalCount}개`
-                      : "출국만기보험·국민연금 반환일시금 점검"}
+                      ? t("home.exitResultLine", {
+                          ready: latestExitResult.readyCount,
+                          total: latestExitResult.totalCount,
+                        })
+                      : t("home.exitLead")}
                   </p>
                 </div>
               </div>
@@ -265,7 +295,7 @@ export default function DashboardPage() {
                     </div>
                   </div>
                   <span className="rounded-lg bg-secondary px-2 py-0.5 text-[10px] font-semibold text-secondary-foreground">
-                    {evt.type}
+                    {EVENT_TYPE_LABEL_KEY[evt.type] ? t(EVENT_TYPE_LABEL_KEY[evt.type] as any) : evt.type}
                   </span>
                 </div>
               ))}

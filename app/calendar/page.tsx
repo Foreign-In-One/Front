@@ -28,13 +28,14 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { usePayCycle } from "@/state/paycycle-context";
-import { useT, type DictKey } from "@/i18n";
+import { useT, type TKey } from "@/i18n";
+import type { UiLocale } from "@/i18n/dict";
 import { isoDate, formatKDate } from "@/lib/paycycle/format";
 import type { CalendarEvent, EventType } from "@/lib/paycycle/types";
 
 const EVENT_META: Record<
   EventType,
-  { labelKey: DictKey; tone: string; chipStyle: string; icon: typeof CalendarClock }
+  { labelKey: TKey; tone: string; chipStyle: string; icon: typeof CalendarClock }
 > = {
   PAYDAY: {
     labelKey: "cal.type.payday",
@@ -68,7 +69,7 @@ const EVENT_META: Record<
   },
 };
 
-const WEEKDAYS_MAP: Record<string, string[]> = {
+const WEEKDAYS_MAP: Record<UiLocale, string[]> = {
   ko: ["일", "월", "화", "수", "목", "금", "토"],
   en: ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"],
   vi: ["CN", "T2", "T3", "T4", "T5", "T6", "T7"],
