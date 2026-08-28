@@ -3,6 +3,7 @@ import {
   uploadDocumentApi,
   runDocumentOcrApi,
   type DocumentTypeEnum,
+  type CandidateAmountDto,
 } from "@/services/api";
 import type { DocFields, DocKind } from "@/lib/paycycle/types";
 import { emptyFields } from "@/lib/paycycle/types";
@@ -12,6 +13,7 @@ export interface OcrResult {
   /** 실제 AI 판독이 아니라 샘플(Mock) 값인지 */
   mock: boolean;
   fields: DocFields;
+  candidateAmounts?: CandidateAmountDto[];
   confidence: "high" | "low";
   message: string;
 }
@@ -57,7 +59,13 @@ export async function readDocument(input: {
         ok: true,
         mock: uploadRes.isMock || ocrRes.isMock,
         fields,
-        confidence: ocrRes.data.ocrStatus === "SUCCESS" ? "high" : "low",
+        candidateAmounts: ext.candidateAmounts || (ext.baseSalary || ext.netPay ? [
+          ...(ext.baseSalary ? [{ label: "기본급", amount: ext.baseSalary }] : []),
+          ...(ext.overtimeAllowance ? [{ label: "연장근로수당", amount: ext.overtimeAllowance }] : []),
+          ...(ext.totalPayment ? [{ label: "지급총액", amount: ext.totalPayment }] : []),
+          ...(ext.netPay ? [{ label: "실지급액", amount: ext.netPay }] : []),
+        ] : undefined),
+        confidence: ocrRes.data.ocrStatus === "SUCCESS" || ocrRes.data.ocrStatus === "COMPLETED" ? "high" : "low",
         message: `${file.name} OCR 판독이 완료되었습니다.`,
       };
     } catch (err) {
@@ -67,10 +75,12 @@ export async function readDocument(input: {
 
   // 2. Mock 또는 fallback 판독
   const res = await readDocumentOcrApi({ kind, dataUrl, period });
+
   return {
     ok: res.ok,
     mock: res.mock,
     fields: res.fields,
+    candidateAmounts: res.candidateAmounts,
     confidence: res.confidence,
     message: res.message,
   };

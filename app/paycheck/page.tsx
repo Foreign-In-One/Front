@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   CheckCircle2,
   FileText,
@@ -48,7 +48,12 @@ import type {
 } from "@/lib/paycycle/types";
 import { formatKDate, monthLabel, periodOf, uid, won } from "@/lib/paycycle/format";
 import { readDocument } from "@/services/ocr";
-import { analyzePaycheckApi } from "@/services/api";
+import {
+  analyzePaycheckApi,
+  getMockBankTransactionsApi,
+  type CandidateAmountDto,
+  type MockBankTransactionDto,
+} from "@/services/api";
 import { useT } from "@/i18n";
 
 const DOC_ORDER: DocKind[] = ["contract", "statement", "deposit"];
@@ -77,14 +82,41 @@ const DOC_META: Record<
   },
 };
 
-const FIELD_LABEL: Record<keyof Omit<DocFields, "period">, string> = {
-  basePay: "기본급",
-  allowances: "수당 합계",
-  deductions: "공제 합계",
-  netPay: "실지급액 / 입금액",
-  payDay: "계약상 급여일(일)",
-  payDate: "지급·입금일",
+const FIELD_LABEL_KEYS: Record<keyof Omit<DocFields, "period">, string> = {
+  basePay: "pay.field.basePay",
+  allowances: "pay.field.allowances",
+  deductions: "pay.field.deductions",
+  netPay: "pay.field.netPay",
+  payDay: "pay.field.payDay",
+  payDate: "pay.field.payDate",
 };
+
+function translateCandidateLabel(rawLabel: string, t: (key: string) => string): string {
+  const norm = rawLabel.trim();
+  if (norm.includes("기본급") || norm.toLowerCase().includes("base")) return t("pay.field.basePay");
+  if (norm.includes("실지급") || norm.includes("실수령") || norm.includes("차인지급") || norm.toLowerCase().includes("net")) return t("pay.field.netPay");
+  if (norm.includes("실입금") || norm.includes("입금액")) return t("pay.field.netPay");
+  if (norm.includes("연장") || norm.toLowerCase().includes("overtime")) return t("pay.field.overtimeAllowance");
+  if (norm.includes("지급총액") || norm.includes("총지급") || norm.toLowerCase().includes("gross") || norm.includes("월급여총액")) return t("pay.field.totalPayment");
+  if (norm.includes("공제") || norm.toLowerCase().includes("deduction")) return t("pay.field.deductions");
+  if (norm.includes("수당") || norm.toLowerCase().includes("allowance")) return t("pay.field.allowances");
+  if (norm.includes("잔액") || norm.toLowerCase().includes("balance")) return t("pay.field.afterBalance");
+  return rawLabel;
+}
+
+function isCandidateRecommended(kind: DocKind, label: string): boolean {
+  const norm = label.trim().toLowerCase();
+  if (kind === "contract") {
+    return norm.includes("기본급") || norm.includes("base") || norm.includes("월급");
+  }
+  if (kind === "statement") {
+    return norm.includes("실지급") || norm.includes("실수령") || norm.includes("차인지급") || norm.includes("net");
+  }
+  if (kind === "deposit") {
+    return norm.includes("실입금") || norm.includes("입금액") || norm.includes("급여") || norm.includes("net");
+  }
+  return false;
+}
 
 /** 백엔드 미동작 시 제공할 명시적 최근 2개월치 Fallback Mock 급여 확인 기록 */
 const MOCK_FALLBACK_RECORDS: PayRecord[] = [
@@ -239,7 +271,7 @@ function defaultDoc(kind: DocKind, period: string): PayDocument {
 }
 
 export default function PayCheckPage() {
-  const { state, hydrated, upsertPayRecord, saveResult } = usePayCycle();
+  const { state, hydrated, upsertPayRecord, saveResult, addEvent } = usePayCycle();
   const { t, locale } = useT();
 
   const [step, setStep] = useState<number>(-1);
@@ -249,6 +281,33 @@ export default function PayCheckPage() {
 
   // 이전 기록 상세 보기 다이얼로그 모달 상태
   const [selectedRecord, setSelectedRecord] = useState<PayRecord | null>(null);
+
+  // 이전에 저장되거나 확인된 근로계약서 자동 탐색
+  const savedContract = useMemo(() => {
+    const recWithContract = state.payRecords.find(
+      (r) => r.documents?.contract && (r.documents.contract.fields.basePay || r.documents.contract.confirmed)
+    );
+    return recWithContract?.documents?.contract || null;
+  }, [state.payRecords]);
+
+  const resolveContractDoc = useCallback(
+    (targetPeriod: string, currentContract?: PayDocument | null): PayDocument => {
+      if (currentContract && (currentContract.fields.basePay || currentContract.confirmed)) {
+        return {
+          ...currentContract,
+          fields: { ...currentContract.fields, period: targetPeriod },
+        };
+      }
+      if (savedContract) {
+        return {
+          ...savedContract,
+          fields: { ...savedContract.fields, period: targetPeriod },
+        };
+      }
+      return defaultDoc("contract", targetPeriod);
+    },
+    [savedContract]
+  );
 
   const [docs, setDocs] = useState<PayDocuments>(() => ({
     contract: defaultDoc("contract", period),
@@ -262,12 +321,73 @@ export default function PayCheckPage() {
     deposit: false,
   });
 
+  const [candidates, setCandidates] = useState<Record<DocKind, CandidateAmountDto[]>>({
+    contract: [],
+    statement: [],
+    deposit: [],
+  });
+
   const [analyzing, setAnalyzing] = useState(false);
   const [analysis, setAnalysis] = useState<PaycheckAnalysis | null>(null);
 
+  const [bankTx, setBankTx] = useState<MockBankTransactionDto | null>(null);
+  const [syncingBank, setSyncingBank] = useState(false);
+
+  const fetchBankSalary = useCallback(async (targetPeriod: string) => {
+    setSyncingBank(true);
+    try {
+      const res = await getMockBankTransactionsApi();
+      const txs = res.transactions.resList || [];
+      const matched =
+        txs.find((t) => t.tranType === "급여" || t.inoutType === "입금" || t.printedContent.includes("급여")) ||
+        txs[0];
+      if (matched) {
+        setBankTx(matched);
+        const amt = Number(matched.tranAmt.replace(/[^0-9.-]+/g, "")) || 2260000;
+        const dateIso =
+          matched.bankTranDate && matched.bankTranDate.length === 8
+            ? `${matched.bankTranDate.slice(0, 4)}-${matched.bankTranDate.slice(4, 6)}-${matched.bankTranDate.slice(6, 8)}`
+            : `${targetPeriod}-25`;
+
+        setDocs((prev) => ({
+          ...prev,
+          deposit: {
+            kind: "deposit",
+            source: "bank_auto",
+            fileName: `${matched.bankName || "하나은행"} (${matched.printedContent || "급여 입금"})`,
+            fields: {
+              period: targetPeriod,
+              basePay: null,
+              allowances: null,
+              deductions: null,
+              netPay: amt,
+              payDay: null,
+              payDate: dateIso,
+            },
+            confirmed: true,
+            masked: false,
+            note: `${matched.bankName || "하나은행"} · ${matched.printedContent || "한국정밀 급여"} (${won(amt)})`,
+          },
+        }));
+
+        setCandidates((prev) => ({
+          ...prev,
+          deposit: [
+            { label: "실입금액", amount: amt },
+            ...(matched.afterBalanceAmt ? [{ label: "거래후잔액", amount: Number(matched.afterBalanceAmt) }] : []),
+          ],
+        }));
+      }
+    } catch (err) {
+      console.warn("Failed to fetch bank transactions:", err);
+    } finally {
+      setSyncingBank(false);
+    }
+  }, []);
+
   useEffect(() => {
     setDocs((prev) => {
-      const c = prev.contract ?? defaultDoc("contract", period);
+      const c = resolveContractDoc(period, prev.contract);
       const s = prev.statement ?? defaultDoc("statement", period);
       const d = prev.deposit ?? defaultDoc("deposit", period);
       return {
@@ -276,20 +396,38 @@ export default function PayCheckPage() {
         deposit: { ...d, fields: { ...d.fields, period } },
       };
     });
-  }, [period]);
+    if (savedContract?.fields.basePay) {
+      setCandidates((prev) => ({
+        ...prev,
+        contract: [{ label: "기본급", amount: savedContract.fields.basePay! }],
+      }));
+    }
+    void fetchBankSalary(period);
+  }, [period, fetchBankSalary, resolveContractDoc, savedContract]);
+
+  const handleStartNewCheck = () => {
+    const cDoc = resolveContractDoc(period, docs.contract);
+    setDocs({
+      contract: cDoc,
+      statement: defaultDoc("statement", period),
+      deposit: defaultDoc("deposit", period),
+    });
+    setCandidates({
+      contract: cDoc.fields.basePay ? [{ label: "기본급", amount: cDoc.fields.basePay }] : [],
+      statement: [],
+      deposit: [],
+    });
+    setActivePaycheckId(undefined);
+    setAnalysis(null);
+    void fetchBankSalary(period);
+    setStep(0);
+  };
 
   const rec = state.payRecords.find((r) => r.period === period);
 
-  useEffect(() => {
-    if (rec?.documents) {
-      setDocs(rec.documents);
-      if (rec.analysis) setAnalysis(rec.analysis);
-    }
-  }, [rec]);
-
   const historyRecords = useMemo(() => {
     if (state.payRecords && state.payRecords.length > 0) {
-      return state.payRecords;
+      return [...state.payRecords].sort((a, b) => (b.period || "").localeCompare(a.period || ""));
     }
     return MOCK_FALLBACK_RECORDS;
   }, [state.payRecords]);
@@ -380,11 +518,17 @@ export default function PayCheckPage() {
           note: res.message,
         },
       }));
+      if (res.candidateAmounts && res.candidateAmounts.length > 0) {
+        setCandidates((prev) => ({
+          ...prev,
+          [kind]: res.candidateAmounts || [],
+        }));
+      }
       setReading((p) => ({ ...p, [kind]: false }));
       if (res.ok) {
-        toast.success(res.message);
+        toast.success(t("pay.readDone", { name: file.name }));
       } else {
-        toast.error(res.message);
+        toast.error(t("pay.readFail", { name: file.name }));
       }
     };
     reader.readAsDataURL(file);
@@ -411,30 +555,81 @@ export default function PayCheckPage() {
           <DrawerDescription>{t("common.manualInput")}</DrawerDescription>
         </DrawerHeader>
         {editingKind && (
-          <div className="space-y-3 pt-2">
-            {Object.keys(FIELD_LABEL).map((fKey) => {
-              const k = fKey as keyof Omit<DocFields, "period">;
-              const val = docs[editingKind]?.fields[k];
-              return (
-                <div key={k} className="flex items-center justify-between gap-3">
-                  <span className="text-xs font-semibold text-muted-foreground">
-                    {FIELD_LABEL[k]}
-                  </span>
-                  <Input
-                    type={k.includes("Date") || k.includes("Day") ? "text" : "number"}
-                    value={val ?? ""}
-                    onChange={(e) =>
-                      updateField(
-                        editingKind,
-                        k,
-                        e.target.value ? (k.includes("Date") ? e.target.value : Number(e.target.value)) : null
-                      )
-                    }
-                    className="w-48 text-right text-xs font-bold rounded-2xl border border-input bg-background shadow-xs focus-visible:ring-2 focus-visible:ring-ring"
-                  />
+          <div className="space-y-4 pt-2">
+            {/* 금액 후보군(candidateAmounts) 선택 칩 영역 */}
+            {candidates[editingKind] && candidates[editingKind].length > 0 && (
+              <div className="rounded-2xl bg-primary/5 border border-primary/20 p-3.5 space-y-2">
+                <span className="text-[11px] font-extrabold text-primary flex items-center gap-1.5">
+                  <Sparkles className="size-3.5" /> {t("pay.candidate.title")}
+                </span>
+                <div className="flex flex-wrap gap-1.5">
+                  {candidates[editingKind].map((cand, idx) => {
+                    const isRec = isCandidateRecommended(editingKind, cand.label);
+                    const translatedLabel = translateCandidateLabel(cand.label, t);
+                    return (
+                      <button
+                        key={idx}
+                        type="button"
+                        onClick={() => {
+                          if (editingKind === "contract") {
+                            updateField(editingKind, "basePay", cand.amount);
+                            toast.success(
+                              t("pay.candidate.appliedToast", {
+                                field: t("pay.field.basePay"),
+                                amount: won(cand.amount),
+                              })
+                            );
+                          } else {
+                            updateField(editingKind, "netPay", cand.amount);
+                            toast.success(
+                              t("pay.candidate.appliedToast", {
+                                field: t("pay.field.netPay"),
+                                amount: won(cand.amount),
+                              })
+                            );
+                          }
+                        }}
+                        className="inline-flex items-center gap-1.5 rounded-xl bg-card hover:bg-primary/10 text-foreground hover:text-primary border border-border/80 hover:border-primary/40 px-3 py-1.5 text-xs font-bold shadow-2xs transition-all active:scale-95 cursor-pointer"
+                      >
+                        {isRec && (
+                          <span className="text-[9px] font-black px-1.5 py-0.5 rounded-md bg-primary/15 text-primary">
+                            ✨ {t("pay.candidate.aiRecommended")}
+                          </span>
+                        )}
+                        <span className="text-muted-foreground text-[10px]">{translatedLabel}:</span>
+                        <span className="font-extrabold text-primary">{won(cand.amount)}</span>
+                      </button>
+                    );
+                  })}
                 </div>
-              );
-            })}
+              </div>
+            )}
+
+            <div className="space-y-3">
+              {(Object.keys(FIELD_LABEL_KEYS) as (keyof Omit<DocFields, "period">)[]).map((k) => {
+                const val = docs[editingKind]?.fields[k];
+                return (
+                  <div key={k} className="flex items-center justify-between gap-3">
+                    <span className="text-xs font-semibold text-muted-foreground">
+                      {t(FIELD_LABEL_KEYS[k])}
+                    </span>
+                    <Input
+                      type={k.includes("Date") || k.includes("Day") ? "text" : "number"}
+                      value={val ?? ""}
+                      onChange={(e) =>
+                        updateField(
+                          editingKind,
+                          k,
+                          e.target.value ? (k.includes("Date") ? e.target.value : Number(e.target.value)) : null
+                        )
+                      }
+                      className="w-48 text-right text-xs font-bold rounded-2xl border border-input bg-background shadow-xs focus-visible:ring-2 focus-visible:ring-ring"
+                    />
+                  </div>
+                );
+              })}
+            </div>
+
             <Button
               className="mt-4 w-full rounded-2xl bg-gradient-to-r from-primary to-[#1D4A88] text-primary-foreground font-bold shadow-md shadow-primary/20"
               onClick={() => setEditingKind(null)}
@@ -452,12 +647,47 @@ export default function PayCheckPage() {
     setStep(4);
 
     const result = analyzePaycheck(docs, state.employment, period);
-    setAnalysis(result);
+    const localizedRows = (result.rows || []).map((row) => ({
+      ...row,
+      item:
+        row.item === "기본급"
+          ? t("pay.field.basePay")
+          : row.item === "실지급액"
+          ? t("pay.field.netPay")
+          : row.item,
+    }));
+    const localizedResult = { ...result, rows: localizedRows };
+    setAnalysis(localizedResult);
+
+    const contractBase =
+      typeof docs.contract?.fields.basePay === "number"
+        ? docs.contract.fields.basePay
+        : Number(String(docs.contract?.fields.basePay || "0").replace(/[^0-9.-]+/g, "")) || 2500000;
+
+    const statementNet =
+      typeof docs.statement?.fields.netPay === "number"
+        ? docs.statement.fields.netPay
+        : Number(String(docs.statement?.fields.netPay || "0").replace(/[^0-9.-]+/g, "")) || 2380000;
+
+    const depositNet =
+      typeof docs.deposit?.fields.netPay === "number"
+        ? docs.deposit.fields.netPay
+        : Number(String(docs.deposit?.fields.netPay || "0").replace(/[^0-9.-]+/g, "")) || 2260000;
+
+    const diff = depositNet - statementNet;
+    const expectedDate = docs.statement?.fields.payDate || `${period}-25`;
+    const actualDate = docs.deposit?.fields.payDate || `${period}-25T09:14:00`;
 
     let backendPaycheckId: number | undefined;
     try {
       const beRes = await analyzePaycheckApi({
         payPeriod: period,
+        contractAmount: contractBase,
+        payslipAmount: statementNet,
+        actualAmount: depositNet,
+        differenceAmount: diff,
+        expectedPaymentDate: expectedDate,
+        paymentDate: actualDate,
       });
       if (beRes?.paycheck?.paycheckId) {
         backendPaycheckId = beRes.paycheck.paycheckId;
@@ -479,7 +709,7 @@ export default function PayCheckPage() {
       checkedAt: new Date().toISOString().slice(0, 10),
       paidAmount: docs.deposit?.fields.netPay ?? null,
       documents: docs,
-      analysis: result,
+      analysis: localizedResult,
     };
 
     upsertPayRecord(newRec);
@@ -496,6 +726,21 @@ export default function PayCheckPage() {
       employment: state.employment,
     });
 
+    // 캘린더에 급여 확인 일정 자동 등록
+    const eventDate = docs.deposit?.fields.payDate?.slice(0, 10) || `${period}-25`;
+    const isNormal = result.overallStatus === "MATCH";
+    addEvent({
+      title: `${monthLabel(period)} 급여 확인 (${won(depositNet)})`,
+      type: "PAYCHECK",
+      date: eventDate,
+      time: "09:00",
+      description: `${state.employment?.workplace || "근무지"} ${period} 급여 ${
+        isNormal ? "정상 입금 확인" : "차액 확인 필요"
+      }`,
+      completed: true,
+      auto: true,
+    });
+
     setAnalyzing(false);
     toast.success(t("pay.savedToast"));
     setStep(5);
@@ -510,7 +755,7 @@ export default function PayCheckPage() {
           title={t("pay.startTitle")}
           description={t("pay.startDesc")}
           cta={t("pay.startCta")}
-          onStart={() => setStep(0)}
+          onStart={handleStartNewCheck}
         >
           <div className="rounded-3xl bg-card border border-border/70 p-5 shadow-xs backdrop-blur-md">
             <label className="text-xs font-bold text-muted-foreground" htmlFor="period">
@@ -543,11 +788,11 @@ export default function PayCheckPage() {
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
               <History className="size-4 text-primary" />
-              <h3 className="text-sm font-extrabold text-foreground">이전 급여 확인 내역</h3>
+              <h3 className="text-sm font-extrabold text-foreground">{t("pay.history.title")}</h3>
             </div>
             {state.payRecords.length === 0 && (
               <span className="rounded-full bg-primary/10 px-2.5 py-0.5 text-[10px] font-black text-primary">
-                Mock 데이터 연동
+                {t("pay.history.mockBadge")}
               </span>
             )}
           </div>
@@ -587,14 +832,14 @@ export default function PayCheckPage() {
                         </span>
                       </div>
                       <p className="mt-0.5 text-[11px] text-muted-foreground">
-                        {r.workplace || "사업주 미입력"} · 확인일: {formatKDate(r.checkedAt)}
+                        {r.workplace || t("pay.history.noWorkplace")} · {t("pay.history.checkedDate", { date: formatKDate(r.checkedAt) })}
                       </p>
                     </div>
                   </div>
 
                   <div className="flex items-center gap-2">
                     <span className="text-xs font-black text-primary">
-                      {r.paidAmount ? won(r.paidAmount) : "내역 없음"}
+                      {r.paidAmount ? won(r.paidAmount) : t("pay.history.noAmount")}
                     </span>
                     <Eye className="size-4 text-muted-foreground" />
                   </div>
@@ -676,6 +921,7 @@ export default function PayCheckPage() {
     const isReading = reading[currentKind];
     const isDone = Boolean(currentDoc?.fields.basePay || currentDoc?.fields.netPay);
     const Icon = meta.icon;
+    const isBankAutoDeposit = currentKind === "deposit" && currentDoc?.source === "bank_auto";
 
     return (
       <AppShell title={t("pay.title")} subtitle={monthLabel(period)}>
@@ -729,29 +975,87 @@ export default function PayCheckPage() {
               </div>
             </div>
 
-            <div className="flex flex-wrap gap-2.5 pt-2">
-              <label className="inline-flex cursor-pointer items-center gap-2 rounded-2xl bg-gradient-to-r from-primary to-[#1D4A88] px-5 py-3 text-xs font-bold text-primary-foreground shadow-md shadow-primary/20 hover:scale-[1.01] active:scale-[0.99] transition-all">
-                <Upload className="size-4" />
-                {t("common.upload")}
-                <input
-                  type="file"
-                  accept="image/*"
-                  className="hidden"
-                  onChange={(e) => {
-                    const file = e.target.files?.[0];
-                    if (file) void handleUpload(currentKind, file);
-                  }}
-                />
-              </label>
+            {/* Step 2 입금내역 자동 연동 카드 또는 일반 서류 액션 버튼 */}
+            {isBankAutoDeposit ? (
+              <div className="rounded-3xl bg-gradient-to-br from-primary/10 via-[#1D4A88]/10 to-info/10 border border-primary/30 p-5 shadow-xs backdrop-blur-md space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2.5">
+                    <div className="flex size-10 items-center justify-center rounded-2xl bg-primary text-primary-foreground shadow-xs">
+                      <Landmark className="size-5" />
+                    </div>
+                    <div>
+                      <span className="text-xs font-black text-foreground">{currentDoc?.fileName || "하나은행"}</span>
+                      <p className="text-[11px] font-semibold text-muted-foreground">{currentDoc?.note}</p>
+                    </div>
+                  </div>
+                  <span className="rounded-full bg-primary/15 px-2.5 py-0.5 text-[10px] font-black text-primary border border-primary/20">
+                    ✨ {t("pay.bank.autoBadge")}
+                  </span>
+                </div>
 
-              <Button
-                variant="outline"
-                className="h-11 rounded-2xl text-xs font-bold border border-input bg-card shadow-xs hover:bg-accent hover:text-accent-foreground"
-                onClick={() => setEditingKind(currentKind)}
-              >
-                {t("common.manualInput")}
-              </Button>
-            </div>
+                <div className="rounded-2xl bg-background/80 border border-border/60 p-3.5 flex items-center justify-between">
+                  <span className="text-xs font-bold text-muted-foreground">{t("pay.field.netPay")}</span>
+                  <span className="text-base font-black text-primary">{won(currentDoc?.fields.netPay ?? 0)}</span>
+                </div>
+
+                <div className="flex flex-wrap items-center gap-2 pt-1">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setEditingKind("deposit")}
+                    className="flex-1 rounded-xl text-xs font-bold border border-input bg-card shadow-xs hover:bg-accent"
+                  >
+                    {t("pay.bank.changeManually")}
+                  </Button>
+                  <label className="inline-flex cursor-pointer items-center gap-1.5 rounded-xl border border-input bg-card px-3 py-2 text-xs font-bold text-foreground shadow-xs hover:bg-accent transition-all">
+                    <Upload className="size-3.5" />
+                    {t("common.upload")}
+                    <input
+                      type="file"
+                      accept="image/*"
+                      className="hidden"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (file) void handleUpload("deposit", file);
+                      }}
+                    />
+                  </label>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    disabled={syncingBank}
+                    onClick={() => void fetchBankSalary(period)}
+                    className="rounded-xl text-xs font-bold text-muted-foreground hover:text-primary"
+                  >
+                    {syncingBank ? <Loader2 className="size-3.5 animate-spin" /> : t("pay.bank.syncAgain")}
+                  </Button>
+                </div>
+              </div>
+            ) : (
+              <div className="flex flex-wrap gap-2.5 pt-2">
+                <label className="inline-flex cursor-pointer items-center gap-2 rounded-2xl bg-gradient-to-r from-primary to-[#1D4A88] px-5 py-3 text-xs font-bold text-primary-foreground shadow-md shadow-primary/20 hover:scale-[1.01] active:scale-[0.99] transition-all">
+                  <Upload className="size-4" />
+                  {t("common.upload")}
+                  <input
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      if (file) void handleUpload(currentKind, file);
+                    }}
+                  />
+                </label>
+
+                <Button
+                  variant="outline"
+                  className="h-11 rounded-2xl text-xs font-bold border border-input bg-card shadow-xs hover:bg-accent hover:text-accent-foreground"
+                  onClick={() => setEditingKind(currentKind)}
+                >
+                  {t("common.manualInput")}
+                </Button>
+              </div>
+            )}
 
             {!isDone && !isReading && (
               <div className="rounded-2xl bg-warn/10 border border-warn/20 p-3.5 text-xs font-semibold text-warn-foreground">
@@ -762,29 +1066,118 @@ export default function PayCheckPage() {
             {isReading && (
               <div className="flex items-center gap-2.5 rounded-2xl bg-primary/10 p-4 text-xs font-bold text-primary shadow-xs">
                 <Loader2 className="size-4 animate-spin text-primary" />
-                {t("common.reading")}
+                {t("pay.readingDoc", { doc: t(meta.labelKey) })}
               </div>
             )}
 
-            {isDone && !isReading && (
-              <div className="rounded-2xl bg-primary/5 border border-primary/20 p-4 text-xs font-semibold leading-relaxed text-foreground shadow-xs space-y-1">
-                <p className="font-extrabold text-primary flex items-center gap-1.5">
-                  <CheckCircle2 className="size-4 text-primary" />
-                  {currentKind === "contract" &&
-                    t("pay.doc.extractedContract", {
-                      amount: won(currentDoc?.fields.basePay ?? 0),
-                    })}
-                  {currentKind === "statement" &&
-                    t("pay.doc.extractedStatement", {
-                      amount: won(currentDoc?.fields.netPay ?? currentDoc?.fields.basePay ?? 0),
-                    })}
-                  {currentKind === "deposit" &&
-                    t("pay.doc.extractedDeposit", {
-                      amount: won(currentDoc?.fields.netPay ?? 0),
-                    })}
-                </p>
-                {currentDoc?.note && (
-                  <p className="text-[11px] text-muted-foreground pt-0.5">{currentDoc.note}</p>
+            {isDone && !isReading && !isBankAutoDeposit && (
+              <div className="space-y-3 pt-1">
+                {/* 1. 업로드된 문서 요약 카드 */}
+                <div className="rounded-2xl bg-primary/5 border border-primary/20 p-4 text-xs font-semibold leading-relaxed text-foreground shadow-xs space-y-1.5">
+                  <div className="flex items-center justify-between">
+                    <p className="font-extrabold text-primary flex items-center gap-1.5">
+                      <CheckCircle2 className="size-4 text-primary" />
+                      {currentKind === "contract" &&
+                        t("pay.doc.extractedContract", {
+                          amount: won(currentDoc?.fields.basePay ?? 0),
+                        })}
+                      {currentKind === "statement" &&
+                        t("pay.doc.extractedStatement", {
+                          amount: won(currentDoc?.fields.netPay ?? currentDoc?.fields.basePay ?? 0),
+                        })}
+                      {currentKind === "deposit" &&
+                        t("pay.doc.extractedDeposit", {
+                          amount: won(currentDoc?.fields.netPay ?? 0),
+                        })}
+                    </p>
+                    {currentDoc?.fileName && (
+                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-lg bg-primary/10 text-primary truncate max-w-[140px]">
+                        📄 {currentDoc.fileName}
+                      </span>
+                    )}
+                  </div>
+                  {currentDoc?.note && (
+                    <p className="text-[11px] text-muted-foreground pt-0.5">{currentDoc.note}</p>
+                  )}
+                </div>
+
+                {/* 2. 문서에서 감지된 금액 후보군 칩 UI (AI 스마트 추천 포함) */}
+                {candidates[currentKind] && candidates[currentKind].length > 0 && (
+                  <div className="rounded-2xl bg-muted/50 border border-border/70 p-3.5 space-y-2">
+                    <span className="text-[11px] font-extrabold text-foreground flex items-center gap-1.5">
+                      <Sparkles className="size-3.5 text-primary" />
+                      {t("pay.candidate.title")}
+                    </span>
+                    <div className="flex flex-wrap gap-1.5">
+                      {candidates[currentKind].map((cand, idx) => {
+                        const isRec = isCandidateRecommended(currentKind, cand.label);
+                        const translatedLabel = translateCandidateLabel(cand.label, t);
+                        const isCurrentVal =
+                          currentKind === "contract"
+                            ? currentDoc?.fields.basePay === cand.amount
+                            : currentDoc?.fields.netPay === cand.amount;
+
+                        return (
+                          <button
+                            key={idx}
+                            type="button"
+                            onClick={() => {
+                              if (currentKind === "contract") {
+                                updateField(currentKind, "basePay", cand.amount);
+                                toast.success(
+                                  t("pay.candidate.appliedToast", {
+                                    field: t("pay.field.basePay"),
+                                    amount: won(cand.amount),
+                                  })
+                                );
+                              } else {
+                                updateField(currentKind, "netPay", cand.amount);
+                                toast.success(
+                                  t("pay.candidate.appliedToast", {
+                                    field: t("pay.field.netPay"),
+                                    amount: won(cand.amount),
+                                  })
+                                );
+                              }
+                            }}
+                            className={`inline-flex items-center gap-1.5 rounded-xl border px-3 py-1.5 text-xs font-bold shadow-2xs transition-all active:scale-95 cursor-pointer ${
+                              isCurrentVal
+                                ? "bg-primary text-primary-foreground border-primary shadow-xs"
+                                : isRec
+                                ? "bg-primary/10 text-primary border-primary/40 hover:bg-primary/20"
+                                : "bg-card hover:bg-muted text-foreground border-border/80"
+                            }`}
+                          >
+                            {isRec && (
+                              <span
+                                className={`text-[9px] font-black px-1.5 py-0.5 rounded-md ${
+                                  isCurrentVal ? "bg-white/25 text-white" : "bg-primary/20 text-primary"
+                                }`}
+                              >
+                                ✨ {t("pay.candidate.aiRecommended")}
+                              </span>
+                            )}
+                            <span
+                              className={
+                                isCurrentVal
+                                  ? "text-primary-foreground/90 text-[10px]"
+                                  : "text-muted-foreground text-[10px]"
+                              }
+                            >
+                              {translatedLabel}:
+                            </span>
+                            <span
+                              className={
+                                isCurrentVal ? "font-black text-primary-foreground" : "font-extrabold text-primary"
+                              }
+                            >
+                              {won(cand.amount)}
+                            </span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
                 )}
               </div>
             )}
@@ -937,14 +1330,24 @@ export default function PayCheckPage() {
           <span className="text-xs font-bold text-muted-foreground">
             {t("pay.report.periodLabel", { month: monthLabel(period) })}
           </span>
-          <Button
-            variant="ghost"
-            size="sm"
-            className="rounded-2xl text-xs font-bold shadow-xs"
-            onClick={() => setStep(0)}
-          >
-            {t("common.again")}
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              className="rounded-2xl text-xs font-bold shadow-xs border border-input bg-card"
+              onClick={() => setStep(-1)}
+            >
+              {t("pay.history.title")}
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="rounded-2xl text-xs font-bold shadow-xs"
+              onClick={() => setStep(0)}
+            >
+              {t("common.again")}
+            </Button>
+          </div>
         </div>
 
         {/* AI 심층 분석 리포트 */}
@@ -972,6 +1375,22 @@ export default function PayCheckPage() {
             </div>
           </div>
         )}
+
+        <div className="flex items-center gap-3 pt-2">
+          <Button
+            onClick={() => setStep(-1)}
+            className="flex-1 h-12 rounded-2xl bg-gradient-to-r from-primary to-[#1D4A88] text-primary-foreground text-xs font-bold shadow-md shadow-primary/20 hover:scale-[1.01] transition-all"
+          >
+            {t("pay.history.title")}
+          </Button>
+          <Button
+            onClick={() => setStep(0)}
+            variant="outline"
+            className="flex-1 h-12 rounded-2xl border border-input bg-card text-foreground text-xs font-bold shadow-xs hover:bg-accent"
+          >
+            {t("common.again")}
+          </Button>
+        </div>
       </div>
 
       {manualDrawer}

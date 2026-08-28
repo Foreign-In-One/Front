@@ -73,6 +73,12 @@ export interface PaycheckResponseDto {
 
 export interface PaycheckAnalyzeRequestDto {
   payPeriod: string;
+  contractAmount?: number;
+  payslipAmount?: number;
+  actualAmount?: number;
+  differenceAmount?: number;
+  expectedPaymentDate?: string;
+  paymentDate?: string;
   transactionId?: number;
   contractDocumentId?: number;
   payslipDocumentId?: number;
@@ -80,12 +86,15 @@ export interface PaycheckAnalyzeRequestDto {
 }
 
 export interface EmployerQuestionCardDto {
-  title: string;
+  language?: string;
+  title?: string;
   koreanScript: string;
   nativeScript: string;
 }
 
 export interface PaycheckExplainResponseDto {
+  paycheckId?: number;
+  caseType?: string;
   summary: string;
   reasons: string[];
   nextActions: string[];
@@ -105,13 +114,19 @@ export interface DocumentUploadResponseDto {
   documentId: number;
   fileName?: string;
   documentType: DocumentTypeEnum;
-  ocrStatus: "PENDING" | "PROCESSING" | "SUCCESS" | "FAILED";
+  ocrStatus: "PENDING" | "PROCESSING" | "COMPLETED" | "SUCCESS" | "FAILED";
   createdAt?: string;
+}
+
+export interface CandidateAmountDto {
+  label: string;
+  amount: number;
 }
 
 export interface DocumentOcrExtractedDataDto {
   payPeriod?: string;
   baseSalary?: number;
+  totalPayment?: number;
   overtimeAllowance?: number;
   deduction?: number;
   netPay?: number;
@@ -124,12 +139,13 @@ export interface DocumentOcrExtractedDataDto {
   depositAmount?: number;
   depositDate?: string;
   sender?: string;
+  candidateAmounts?: CandidateAmountDto[];
   [key: string]: any;
 }
 
 export interface DocumentOcrResponseDto {
   documentId: number;
-  ocrStatus: "PENDING" | "PROCESSING" | "SUCCESS" | "FAILED";
+  ocrStatus: "PENDING" | "PROCESSING" | "COMPLETED" | "SUCCESS" | "FAILED";
   extractedData: DocumentOcrExtractedDataDto;
 }
 
@@ -172,6 +188,7 @@ export interface OcrResponseDto {
   confidence: "high" | "low";
   message: string;
   fields: DocFields;
+  candidateAmounts?: CandidateAmountDto[];
 }
 
 export interface AiTranslateRequestDto {
@@ -256,9 +273,25 @@ export async function getProfileApi(): Promise<{
 export async function updateProfileApi(
   payload: ProfileUpdateRequestDto
 ): Promise<{ success: boolean; data?: ProfileResponseDto; isMock: boolean }> {
+  const fallbackProfile: ProfileResponseDto = {
+    userId: 1,
+    name: "민수",
+    phone: "010-1234-5678",
+    nationality: "베트남",
+    visaType: "E-9",
+    entryDate: "2025-03-01",
+    employmentStatus: payload.employmentStatus || "WORKING",
+    companyName: payload.companyName || "한국정밀",
+    workStartDate: "2025-03-10",
+    payday: payload.payday ?? 25,
+    expectedExitDate: payload.expectedExitDate ?? "2027-03-01",
+    language: payload.language || "ko",
+  };
+
   const res = await fetchApi<ProfileResponseDto>(
     "/api/profile",
-    { method: "PATCH", body: JSON.stringify(payload) }
+    { method: "PATCH", body: JSON.stringify(payload) },
+    fallbackProfile
   );
   return { success: true, data: res.data, isMock: res.isMock };
 }
@@ -313,24 +346,50 @@ export async function getPaychecksApi(from?: string, to?: string): Promise<{
 export async function analyzePaycheckApi(
   payload: PaycheckAnalyzeRequestDto
 ): Promise<{ paycheck: PaycheckResponseDto; isMock: boolean }> {
+  const isMatch = (payload.differenceAmount ?? 0) === 0;
+  const fallbackPaycheck: PaycheckResponseDto = {
+    paycheckId: Date.now(),
+    payPeriod: payload.payPeriod,
+    contractAmount: payload.contractAmount ?? 2500000,
+    payslipAmount: payload.payslipAmount ?? 2380000,
+    actualAmount: payload.actualAmount ?? 2260000,
+    differenceAmount: payload.differenceAmount ?? 0,
+    expectedPaymentDate: payload.expectedPaymentDate ?? `${payload.payPeriod}-25`,
+    paymentDate: payload.paymentDate ?? `${payload.payPeriod}-25T09:14:00`,
+    status: isMatch ? "NORMAL" : "EXPLANATION_REQUIRED",
+    analysisSummary: isMatch
+      ? "근로계약서, 임금명세서, 통장 입금액이 정상 일치합니다."
+      : `임금명세서 대비 ${Math.abs(payload.differenceAmount || 0).toLocaleString()}원의 차액이 확인되었습니다.`,
+    nextAction: isMatch
+      ? "특이사항이 없습니다."
+      : "명세서 공제 항목 확인 및 사업주에게 확인 질문 카드를 전달하세요.",
+  };
+
   const res = await fetchApi<PaycheckResponseDto>(
     "/api/paychecks/analyze",
-    { method: "POST", body: JSON.stringify(payload) }
+    { method: "POST", body: JSON.stringify(payload) },
+    fallbackPaycheck
   );
   return { paycheck: res.data, isMock: res.isMock };
 }
 
 /** PayCheck AI 이상징후 원인 설명 및 사장님 질문카드 생성 (`POST /api/paychecks/{paycheckId}/explain`) */
-export async function explainPaycheckApi(paycheckId: number): Promise<{
+export async function explainPaycheckApi(
+  paycheckId: number,
+  options?: { locale?: string; workplace?: string; finding?: any; period?: string }
+): Promise<{
   data: PaycheckExplainResponseDto;
   isMock: boolean;
 }> {
   const fallbackExplain: PaycheckExplainResponseDto = {
+    paycheckId,
+    caseType: "SALARY_DECREASE",
     summary: "급여 대조 결과 차액이 확인되었습니다.",
     reasons: ["기본급 및 수당 계산 차이 가능성", "임금명세서 상 공제 항목 추가 발생"],
     nextActions: ["임금명세서 세부 내역 확인", "회사 급여 담당자에게 문의 카드 발송"],
     employerQuestionCards: [
       {
+        language: options?.locale || "vi",
         title: "급여 차액 확인 요청",
         koreanScript: "안녕하세요 사장님, 이번 달 급여명세서와 통장 입금액에 차이가 있어 확인 부탁드립니다.",
         nativeScript: "Xin chào giám đốc, có sự chênh lệch giữa phiếu lương và tiền vào tài khoản, nhờ giám đốc kiểm tra giúp tôi.",
@@ -340,7 +399,10 @@ export async function explainPaycheckApi(paycheckId: number): Promise<{
 
   const res = await fetchApi<PaycheckExplainResponseDto>(
     `/api/paychecks/${paycheckId}/explain`,
-    { method: "POST" },
+    {
+      method: "POST",
+      body: JSON.stringify(options || {}),
+    },
     fallbackExplain
   );
   return { data: res.data, isMock: res.isMock };
@@ -419,12 +481,18 @@ export async function updateDocumentExtractedDataApi(
   documentId: number,
   extractedData: DocumentOcrExtractedDataDto
 ): Promise<{ data: DocumentOcrResponseDto; isMock: boolean }> {
+  const fallbackOcr: DocumentOcrResponseDto = {
+    documentId,
+    ocrStatus: "SUCCESS",
+    extractedData,
+  };
   const res = await fetchApi<DocumentOcrResponseDto>(
     `/api/documents/${documentId}/extracted-data`,
     {
       method: "PATCH",
       body: JSON.stringify({ extractedData }),
-    }
+    },
+    fallbackOcr
   );
   return { data: res.data, isMock: res.isMock };
 }
@@ -457,9 +525,18 @@ export async function updateCalendarEventApi(
   eventId: number,
   payload: Partial<CalendarEventResponseDto>
 ): Promise<{ data: CalendarEventResponseDto; isMock: boolean }> {
+  const fallbackEvent: CalendarEventResponseDto = {
+    eventId,
+    title: payload.title || "일정",
+    eventType: payload.eventType || "PERSONAL",
+    startAt: payload.startAt || "2026-08-25T09:00:00",
+    description: payload.description,
+  };
+
   const res = await fetchApi<CalendarEventResponseDto>(
     `/api/calendar/events/${eventId}`,
-    { method: "PATCH", body: JSON.stringify(payload) }
+    { method: "PATCH", body: JSON.stringify(payload) },
+    fallbackEvent
   );
   return { data: res.data, isMock: res.isMock };
 }
@@ -471,7 +548,8 @@ export async function deleteCalendarEventApi(eventId: number): Promise<{
 }> {
   const res = await fetchApi<any>(
     `/api/calendar/events/${eventId}`,
-    { method: "DELETE" }
+    { method: "DELETE" },
+    { success: true }
   );
   return { success: true, isMock: res.isMock };
 }
@@ -483,7 +561,8 @@ export async function resetSeedDataApi(): Promise<{
 }> {
   const res = await fetchApi<any>(
     "/api/dev/reset-seed",
-    { method: "POST" }
+    { method: "POST" },
+    { success: true }
   );
   return { success: true, isMock: res.isMock };
 }
@@ -545,9 +624,15 @@ export async function getMockBankTransactionsApi(from?: string, to?: string): Pr
 export async function readDocumentOcrApi(req: OcrRequestDto): Promise<OcrResponseDto> {
   const base = emptyFields(req.period);
   let mockFields: DocFields = base;
+  let candidates: CandidateAmountDto[] = [];
 
   if (req.kind === "contract") {
     mockFields = { ...base, basePay: 2_200_000, allowances: 0, payDay: 25 };
+    candidates = [
+      { label: "기본급", amount: 2_200_000 },
+      { label: "식대보조", amount: 150_000 },
+      { label: "월급여총액", amount: 2_350_000 },
+    ];
   } else if (req.kind === "statement") {
     mockFields = {
       ...base,
@@ -557,8 +642,19 @@ export async function readDocumentOcrApi(req: OcrRequestDto): Promise<OcrRespons
       netPay: 2_380_000,
       payDate: payDayIso(req.period, 25),
     };
+    candidates = [
+      { label: "기본급", amount: 2_200_000 },
+      { label: "연장근로수당", amount: 380_000 },
+      { label: "지급총액", amount: 2_580_000 },
+      { label: "공제총액", amount: 200_000 },
+      { label: "실지급액", amount: 2_380_000 },
+    ];
   } else {
     mockFields = { ...base, netPay: 2_260_000, payDate: payDayIso(req.period, 27) };
+    candidates = [
+      { label: "실입금액", amount: 2_260_000 },
+      { label: "거래후잔액", amount: 6_760_000 },
+    ];
   }
 
   return {
@@ -567,6 +663,7 @@ export async function readDocumentOcrApi(req: OcrRequestDto): Promise<OcrRespons
     confidence: "low",
     message: "판독이 완료되었습니다. 필요시 값을 수정해 주세요.",
     fields: mockFields,
+    candidateAmounts: candidates,
   };
 }
 

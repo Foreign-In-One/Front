@@ -9,9 +9,7 @@ import {
   Copy,
   FileCheck,
   FileText,
-  HelpCircle,
   Loader2,
-  MessageCircle,
   MessageSquareQuote,
   Scale,
   ShieldCheck,
@@ -34,7 +32,6 @@ interface AnalysisReportProps {
   finding?: PayFinding | null;
   period: string;
   workplace?: string;
-  onOpenChat?: (promptText?: string) => void;
 }
 
 export function AnalysisReport({
@@ -42,7 +39,6 @@ export function AnalysisReport({
   finding,
   period,
   workplace,
-  onOpenChat,
 }: AnalysisReportProps) {
   const { t, locale } = useT();
   const [aiReport, setAiReport] = useState<AiPaycheckReportDto | null>(null);
@@ -114,26 +110,6 @@ export function AnalysisReport({
       : finding.status === "EXPLANATION_REQUIRED"
       ? "WARNING"
       : "DANGER";
-
-  const handleTriggerChat = (customText?: string) => {
-    const questionText =
-      customText ||
-      t("pay.report.askAiPrompt", {
-        period,
-        title: finding.title,
-        fact: finding.fact || "",
-      });
-
-    if (onOpenChat) {
-      onOpenChat(questionText);
-    } else {
-      window.dispatchEvent(
-        new CustomEvent("open-paycycle-chat", {
-          detail: { text: questionText },
-        })
-      );
-    }
-  };
 
   return (
     <div className="space-y-5 pc-rise">
@@ -363,18 +339,6 @@ export function AnalysisReport({
                   </div>
                 </div>
               )}
-
-              {/* AI 어시스턴트 추가 질문하기 버튼 */}
-              <div className="pt-2">
-                <Button
-                  onClick={() => handleTriggerChat()}
-                  className="w-full h-12 rounded-2xl bg-gradient-to-r from-primary to-[#1D4A88] text-primary-foreground text-xs font-bold shadow-md shadow-primary/20 hover:scale-[1.01] active:scale-[0.99] transition-all flex items-center justify-center gap-2"
-                >
-                  <MessageCircle className="size-4" />
-                  {t("pay.report.askAiButton")}
-                  <ArrowRight className="size-3.5" />
-                </Button>
-              </div>
             </div>
           )}
         </div>

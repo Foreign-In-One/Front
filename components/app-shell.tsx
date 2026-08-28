@@ -2,14 +2,13 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { CalendarClock, History, Home, Plane, Receipt, UserRound, Wallet } from "lucide-react";
+import { CalendarClock, UserRound, Wallet } from "lucide-react";
 import type { ReactNode } from "react";
 import { ChatDock } from "@/components/chat-dock";
 import { LanguageSwitcher } from "@/components/language-switcher";
 import { DemoSyncButton } from "@/components/demo-sync-button";
 import { useT, type DictKey } from "@/i18n";
 import { cn } from "@/lib/utils";
-import { toast } from "sonner";
 
 const TABS = [
   { to: "/paycheck", key: "tab.pay", icon: Wallet, implemented: true },

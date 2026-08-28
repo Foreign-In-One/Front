@@ -62,7 +62,7 @@ export function emptyFields(period: string): DocFields {
 
 export interface PayDocument {
   kind: DocKind;
-  source: "upload" | "manual" | "sample";
+  source: "upload" | "manual" | "sample" | "bank_auto";
   fileName: string;
   fields: DocFields;
   /** 사용자가 추출값을 확인했는지 */

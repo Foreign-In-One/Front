@@ -390,7 +390,7 @@ const ko = {
   "pay.noDocs.uploadFirst": "서류 사진 올리러 가기",
   "pay.noDocs.useMock": "샘플 데이터로 대조해보기",
   "pay.noDocs.warning": "최소 1개 이상의 서류를 등록해야 분석을 진행할 수 있습니다.",
-  "pay.step.uploadNotice": "사진을 업로드하거나 [샘플 판독] / [직접 입력]을 완료해야 다음으로 진행할 수 있습니다.",
+  "pay.step.uploadNotice": "서류 사진을 올리거나 [직접 입력]을 완료하면 다음 단계로 진행할 수 있습니다.",
 
   /* 프로필 */
   "profile.title": "금융권리 프로필",
@@ -734,7 +734,7 @@ const en: Partial<typeof ko> = {
   "pay.noDocs.uploadFirst": "Go upload documents",
   "pay.noDocs.useMock": "Try with sample data",
   "pay.noDocs.warning": "You must register at least 1 document before running the analysis.",
-  "pay.step.uploadNotice": "Please upload a photo, use sample reading, or enter data manually to proceed.",
+  "pay.step.uploadNotice": "Please upload a document photo or enter details manually to proceed.",
 
   /* Profile */
   "profile.title": "Financial Rights Profile",
@@ -1073,7 +1073,7 @@ const vi: Partial<typeof ko> = {
   "pay.noDocs.uploadFirst": "Đi tải tài liệu",
   "pay.noDocs.useMock": "Dùng thử dữ liệu mẫu",
   "pay.noDocs.warning": "Cần đăng ký ít nhất 1 tài liệu trước khi tiến hành phân tích.",
-  "pay.step.uploadNotice": "Vui lòng tải ảnh lên, dùng thử mẫu hoặc nhập thủ công để tiếp tục.",
+  "pay.step.uploadNotice": "Vui lòng tải ảnh tài liệu lên hoặc nhập thủ công để tiếp tục.",
 
   /* Hồ sơ */
   "profile.title": "Hồ sơ quyền lợi tài chính",
@@ -1412,7 +1412,7 @@ const zh: Partial<typeof ko> = {
   "pay.noDocs.uploadFirst": "前往上传资料照片",
   "pay.noDocs.useMock": "使用示例数据进行比对",
   "pay.noDocs.warning": "至少需要录入 1 份资料才能开始分析。",
-  "pay.step.uploadNotice": "请上传照片、使用示例识别或手动输入数值以继续。",
+  "pay.step.uploadNotice": "请上传资料照片或手动输入数值以继续。",
 
   /* 档案 */
   "profile.title": "金融权利档案",

@@ -28,10 +28,10 @@ const STATUSES: EmploymentStatus[] = ["PRE_EMPLOYMENT", "EMPLOYED", "SEPARATED",
 function getStatusLabel(status: string | undefined, t: any): string {
   if (!status) return "";
   const norm = status.toUpperCase();
-  if (norm === "EMPLOYED" || norm === "WORKING") return t("ob.status.employed");
-  if (norm === "PRE_EMPLOYMENT" || norm === "PRE") return t("ob.status.pre");
-  if (norm === "SEPARATED") return t("ob.status.separated");
-  if (norm === "CHANGING") return t("ob.status.changing");
+  if (norm === "EMPLOYED" || norm === "WORKING") return t("profile.status.employed");
+  if (norm === "PRE_EMPLOYMENT" || norm === "PRE") return t("profile.status.pre");
+  if (norm === "SEPARATED") return t("profile.status.separated");
+  if (norm === "CHANGING") return t("profile.status.changing");
   return status;
 }
 
@@ -182,7 +182,7 @@ export default function ProfilePage() {
               }
               className="rounded-2xl text-xs font-bold border border-input bg-card shadow-xs focus-visible:ring-2 focus-visible:ring-ring"
             />
-            <span className="text-xs font-bold text-muted-foreground">일</span>
+            <span className="text-xs font-bold text-muted-foreground">{t("profile.payDaySuffix")}</span>
           </div>
         </ProfileField>
 
