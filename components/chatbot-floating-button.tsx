@@ -2,6 +2,7 @@
 
 import { MessageCircle, SendHorizontal, Sparkles, X } from 'lucide-react';
 import Link from 'next/link';
+import { usePathname } from 'next/navigation';
 import { useEffect, useRef, useState } from 'react';
 import { dDay, formatKDate } from '@/lib/date';
 import { readProfile, type StoredProfile } from '@/lib/profile';
@@ -168,7 +169,8 @@ function nextId(prefix: string) {
   return `${prefix}-${messageSeq}`;
 }
 
-export function ChatDock() {
+export function ChatbotFloatingButton() {
+  const pathname = usePathname();
   const [open, setOpen] = useState(false);
   const [messages, setMessages] = useState<Message[]>([
     {
@@ -196,6 +198,8 @@ export function ChatDock() {
       document.body.style.overflow = previousOverflow;
     };
   }, [open]);
+
+  if (pathname?.startsWith('/onboarding')) return null;
 
   const send = (text: string) => {
     const question = text.trim();
