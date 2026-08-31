@@ -67,11 +67,15 @@ export default function ExitCheckPage() {
   const employment = state.employment;
   const departureDate = employment?.exitDate?.value || null;
 
-  // 근속 개월 수 계산
+  // 근속 개월 수 계산 (로컬 타임존 기준 날짜 파싱)
   const totalMonths = useMemo(() => {
     if (!employment?.workStartDate?.value) return null;
-    const start = new Date(employment.workStartDate.value);
-    const end = employment.exitDate?.value ? new Date(employment.exitDate.value) : new Date();
+    const parseLocal = (str: string) => {
+      const [y, m, d] = str.split("-").map(Number);
+      return y && m && d ? new Date(y, m - 1, d) : new Date(`${str}T00:00:00`);
+    };
+    const start = parseLocal(employment.workStartDate.value);
+    const end = employment.exitDate?.value ? parseLocal(employment.exitDate.value) : new Date();
     if (isNaN(start.getTime()) || isNaN(end.getTime())) return null;
     if (end < start) return null; // 출국일이 입사일보다 빠른 경우 indeterminate
 

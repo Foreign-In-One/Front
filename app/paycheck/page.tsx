@@ -334,9 +334,11 @@ export default function PayCheckPage() {
 
   const [bankTx, setBankTx] = useState<MockBankTransactionDto | null>(null);
   const [syncingBank, setSyncingBank] = useState(false);
+  const bankReqSeqRef = useRef(0);
 
   const fetchBankSalary = useCallback(async (targetPeriod: string) => {
     setSyncingBank(true);
+    const currentSeq = ++bankReqSeqRef.current;
     try {
       const [yearStr, monthStr] = targetPeriod.split("-");
       const year = Number(yearStr);
@@ -345,6 +347,8 @@ export default function PayCheckPage() {
       const from = `${targetPeriod}-01`;
       const to = `${targetPeriod}-${String(lastDay).padStart(2, "0")}`;
       const res = await getMockBankTransactionsApi(from, to);
+      if (currentSeq !== bankReqSeqRef.current) return;
+
       const txs = res.transactions.resList || [];
       const periodCompact = targetPeriod.replace(/[^0-9]/g, "");
 
@@ -397,11 +401,22 @@ export default function PayCheckPage() {
           ...prev,
           deposit: [],
         }));
+        setDocs((prev) => {
+          if (prev.deposit?.source === "bank_auto") {
+            return {
+              ...prev,
+              deposit: defaultDoc("deposit", targetPeriod),
+            };
+          }
+          return prev;
+        });
       }
     } catch (err) {
       console.warn("Failed to fetch bank transactions:", err);
     } finally {
-      setSyncingBank(false);
+      if (currentSeq === bankReqSeqRef.current) {
+        setSyncingBank(false);
+      }
     }
   }, []);
 
@@ -545,30 +560,28 @@ export default function PayCheckPage() {
     }, 400);
   }, [documentIds]);
 
-  const updateField = useCallback((kind: DocKind, key: keyof DocFields, val: any) => {
-    let nextFieldsForSync: DocFields | undefined;
-    setDocs((prev) => {
-      const current = prev[kind] ?? defaultDoc(kind, period);
-      const nextFields = { ...current.fields, [key]: val };
-      nextFieldsForSync = nextFields;
-      return {
+  const updateField = useCallback(
+    (kind: DocKind, key: keyof DocFields, val: any) => {
+      const current = docs[kind] ?? defaultDoc(kind, period);
+      const nextFields: DocFields = { ...current.fields, [key]: val };
+
+      setDocs((prev) => ({
         ...prev,
         [kind]: {
-          ...current,
+          ...(prev[kind] ?? defaultDoc(kind, period)),
           fields: nextFields,
         },
-      };
-    });
+      }));
 
-    if (nextFieldsForSync) {
-      syncDocumentExtractedData(kind, nextFieldsForSync);
-    }
-  }, [period, syncDocumentExtractedData]);
+      syncDocumentExtractedData(kind, nextFields);
+    },
+    [docs, period, syncDocumentExtractedData]
+  );
 
   const applyCandidate = useCallback(
     (kind: DocKind, cand: CandidateAmountDto) => {
-      const targetField: keyof Omit<DocFields, "period"> =
-        cand.targetField || (kind === "contract" ? "basePay" : "netPay");
+      if (!cand.targetField) return;
+      const targetField = cand.targetField;
       updateField(kind, targetField, cand.amount);
       toast.success(
         t("pay.candidate.appliedToast", {
@@ -1182,9 +1195,8 @@ export default function PayCheckPage() {
                       {candidates[currentKind].map((cand, idx) => {
                         const isRec = isCandidateRecommended(currentKind, cand.label);
                         const translatedLabel = translateCandidateLabel(cand.label, t);
-                        const targetField: keyof Omit<DocFields, "period"> =
-                          cand.targetField || (currentKind === "contract" ? "basePay" : "netPay");
-                        const isCurrentVal = currentDoc?.fields[targetField] === cand.amount;
+                        const targetField = cand.targetField;
+                        const isCurrentVal = targetField ? currentDoc?.fields[targetField] === cand.amount : false;
 
                         return (
                           <button
