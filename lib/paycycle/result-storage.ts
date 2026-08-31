@@ -184,12 +184,29 @@ export function removeSavedResult(id: string): boolean {
   }
 }
 
+export interface NewExitCheckResult {
+  profileSignature?: string;
+  departureDate: string | null;
+  readyCount: number;
+  totalCount: number;
+}
+
+export interface NewPayCheckResult {
+  profileSignature?: string;
+  payPeriod: string;
+  workplace: string;
+  status?: string;
+  differenceAmount: number | null;
+  paidAmount: number | null;
+  findingCount?: number;
+}
+
 /**
  * Lovable 원본과 같은 `paycycle-results-v1` 키를 사용합니다.
  * 이후 `/records`와 `/dashboard`는 kind === "tax"인 항목을 읽으면 됩니다.
  */
 export function saveTaxCheckResult(
-  input: NewTaxCheckResult,
+  input: NewTaxCheckResult & { profileSignature?: string },
 ): SavedTaxCheckResult | null {
   if (typeof window === 'undefined') return null;
 
@@ -198,7 +215,7 @@ export function saveTaxCheckResult(
     userId: currentUserId(),
     kind: 'tax',
     createdAt: new Date().toISOString(),
-    profileSignature: '',
+    profileSignature: input.profileSignature ?? '',
     year: input.year,
     yearlyPay: input.yearlyPay,
     monthsRecorded: input.monthsRecorded,
@@ -235,3 +252,65 @@ export function saveTaxCheckResult(
     return null;
   }
 }
+
+/** 출국 정산 결과 저장 */
+export function saveExitCheckResult(
+  input: NewExitCheckResult,
+): SavedExitCheckResult | null {
+  if (typeof window === 'undefined') return null;
+
+  const record: SavedExitCheckResult = {
+    id: `exit_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+    userId: currentUserId(),
+    kind: 'exit',
+    createdAt: new Date().toISOString(),
+    profileSignature: input.profileSignature ?? '',
+    departureDate: input.departureDate,
+    readyCount: input.readyCount,
+    totalCount: input.totalCount,
+  };
+
+  try {
+    const records = readStoredResults();
+    window.localStorage.setItem(
+      RESULT_STORAGE_KEY,
+      JSON.stringify([record, ...records]),
+    );
+    return record;
+  } catch {
+    return null;
+  }
+}
+
+/** 급여 확인 결과 저장 */
+export function savePayCheckResult(
+  input: NewPayCheckResult,
+): SavedPayCheckResult | null {
+  if (typeof window === 'undefined') return null;
+
+  const record: SavedPayCheckResult = {
+    id: `pay_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+    userId: currentUserId(),
+    kind: 'pay',
+    createdAt: new Date().toISOString(),
+    profileSignature: input.profileSignature ?? '',
+    payPeriod: input.payPeriod,
+    workplace: input.workplace,
+    status: input.status,
+    differenceAmount: input.differenceAmount,
+    paidAmount: input.paidAmount,
+    findingCount: input.findingCount,
+  };
+
+  try {
+    const records = readStoredResults();
+    window.localStorage.setItem(
+      RESULT_STORAGE_KEY,
+      JSON.stringify([record, ...records]),
+    );
+    return record;
+  } catch {
+    return null;
+  }
+}
+

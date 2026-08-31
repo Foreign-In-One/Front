@@ -1,539 +1,308 @@
-'use client';
+"use client";
 
+import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import {
+  AlertTriangle,
   ArrowRight,
   CalendarClock,
   CheckCircle2,
   ChevronRight,
-  CircleAlert,
   History,
-  Home,
   Plane,
   Receipt,
   ShieldCheck,
-  UserRound,
+  Sparkles,
   Wallet,
-} from 'lucide-react';
-import Link from 'next/link';
-import { useEffect, useMemo, useState } from 'react';
-import {
-  listSavedResults,
-  type SavedExitCheckResult,
-  type SavedPayCheckResult,
-  type SavedResult,
-  type SavedTaxCheckResult,
-} from '../../lib/paycycle/result-storage';
-import { formatWon } from '../../lib/paycycle/taxcheck';
-import styles from './page.module.css';
+} from "lucide-react";
+import { AppShell } from "@/components/app-shell";
+import { Button } from "@/components/ui/button";
+import { usePayCycle } from "@/state/paycycle-context";
+import { useT } from "@/i18n";
+import { formatKDate, isoDate, won } from "@/lib/paycycle/format";
+import { listSavedResults, type SavedResult } from "@/lib/paycycle/result-storage";
+import { dDay } from "@/lib/paycycle/rule-engine";
+import type { EventType } from "@/lib/paycycle/types";
+import { cn } from "@/lib/utils";
 
-const NAV_ITEMS = [
-  { href: '/dashboard', label: '홈', icon: Home },
-  { href: '/calendar', label: '캘린더', icon: CalendarClock },
-  { href: '/paycheck', label: '급여', icon: Wallet },
-  { href: '/taxcheck', label: '세금', icon: Receipt },
-  { href: '/exitcheck', label: '출국', icon: Plane },
-] as const;
-
-const KIND_META = {
-  pay: { label: '급여', icon: Wallet, className: 'pay' },
-  tax: { label: '세금', icon: Receipt, className: 'tax' },
-  exit: { label: '출국', icon: Plane, className: 'exit' },
-} as const;
+const EVENT_TYPE_LABEL_KEY: Record<EventType, string> = {
+  PAYDAY: "cal.type.payday",
+  PAYCHECK: "cal.type.paycheck",
+  TAX: "cal.type.tax",
+  EXIT: "cal.type.exit",
+  PERSONAL: "cal.type.personal",
+};
 
 export default function DashboardPage() {
-  const [results, setResults] = useState<SavedResult[]>([]);
-  const [hydrated, setHydrated] = useState(false);
+  const { state, hydrated, yearlyPay, monthsRecorded } = usePayCycle();
+  const { t } = useT();
+
+  const [savedResults, setSavedResults] = useState<SavedResult[]>([]);
 
   useEffect(() => {
-    setResults(listSavedResults());
-    setHydrated(true);
+    setSavedResults(listSavedResults());
   }, []);
 
-  const latestPay = useMemo(
-    () => results.find((result) => result.kind === 'pay'),
-    [results],
-  );
-  const latestTax = useMemo(
-    () => results.find((result) => result.kind === 'tax'),
-    [results],
-  );
-  const latestExit = useMemo(
-    () => results.find((result) => result.kind === 'exit'),
-    [results],
-  );
-  const recentResults = useMemo(() => results.slice(0, 3), [results]);
+  const profile = state.profile;
+  const employment = state.employment;
 
-  const payResults = useMemo(
-    () => results.filter((result) => result.kind === 'pay'),
-    [results],
+  const latestPayRecord = state.payRecords[0];
+  const latestTaxResult = useMemo(
+    () => savedResults.find((r) => r.kind === "tax"),
+    [savedResults]
   );
-  const yearlyPay =
-    latestTax?.yearlyPay ??
-    payResults.reduce((total, result) => total + (result.paidAmount ?? 0), 0);
-  const monthsRecorded = latestTax?.monthsRecorded ?? payResults.length;
-  const hasPaySummary =
-    Boolean(latestTax) ||
-    payResults.some((result) => result.paidAmount !== null);
-  const summaryYear = latestTax?.year ?? new Date().getFullYear();
-  const paySummaryLabel = latestTax
-    ? `${summaryYear}년 확인된 급여`
-    : '저장된 급여 합계';
-  const needsReviewCount = latestTax ? taxReviewCount(latestTax) : 0;
+  const latestExitResult = useMemo(
+    () => savedResults.find((r) => r.kind === "exit"),
+    [savedResults]
+  );
+
+  const displayYearlyPay =
+    yearlyPay > 0
+      ? yearlyPay
+      : latestTaxResult && "yearlyPay" in latestTaxResult && latestTaxResult.yearlyPay
+        ? latestTaxResult.yearlyPay
+        : null;
+
+  const displayMonths =
+    monthsRecorded > 0
+      ? monthsRecorded
+      : latestTaxResult && "monthsRecorded" in latestTaxResult && latestTaxResult.monthsRecorded
+        ? latestTaxResult.monthsRecorded
+        : null;
+
+  const exitIso =
+    employment?.exitDate?.value && !employment.exitDate.unknown
+      ? employment.exitDate.value
+      : null;
+
+  // 다가오는 일정 3개 (오늘 포함 이후 일정만)
+  const today = isoDate(new Date());
+  const upcomingEvents = useMemo(() => {
+    return [...state.events]
+      .filter((e) => !e.completed && e.date >= today)
+      .sort((a, b) => a.date.localeCompare(b.date))
+      .slice(0, 3);
+  }, [state.events, today]);
+
+  if (!hydrated) {
+    return (
+      <AppShell title={t("tab.home")}>
+        <div className="py-20 text-center text-sm text-muted-foreground">
+          {t("home.loading")}
+        </div>
+      </AppShell>
+    );
+  }
+
+  const defaultNickname = profile?.nickname || t("common.unknown");
 
   return (
-    <div className={styles.app}>
-      <header className={styles.appHeader}>
-        <div className={styles.headerInner}>
-          <div className={styles.headingArea}>
-            <p className={styles.eyebrow}>PayCycle AI</p>
-            <h1>내 금융권리 대시보드</h1>
-            <p>급여·세금·출국 확인 상태를 한눈에 살펴봐요.</p>
+    <AppShell
+      title={t("tab.home")}
+      subtitle={t("home.myRights", { name: defaultNickname })}
+    >
+      <div className="space-y-5">
+        {/* 1. 상단 연간 급여 히어로 카드 (딥블루 그라데이션) */}
+        <section className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-[#143463] via-[#1A417A] to-[#143463] p-6 text-white shadow-xl shadow-primary/20 transition-all hover:scale-[1.01]">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-semibold tracking-wider uppercase opacity-80">
+              {t("home.yearly")}
+            </span>
+            {displayMonths !== null ? (
+              <span className="rounded-xl bg-white/15 px-2.5 py-1 text-xs font-bold backdrop-blur">
+                {t("home.monthsRecorded", { n: displayMonths })}
+              </span>
+            ) : (
+              <span className="rounded-xl bg-white/15 px-2.5 py-1 text-xs font-bold backdrop-blur">
+                {t("common.unknownValue")}
+              </span>
+            )}
           </div>
 
-          <div className={styles.headerActions}>
+          <div className="mt-3 flex items-baseline gap-2">
+            {displayYearlyPay !== null ? (
+              <span className="text-3xl font-extrabold tracking-tight">
+                {won(displayYearlyPay)}
+              </span>
+            ) : (
+              <span className="text-xl font-bold tracking-tight text-white/90">
+                {t("home.noSalaryRecorded")}
+              </span>
+            )}
+          </div>
+
+          <p className="mt-1 text-xs text-white/70">
+            {employment?.workplace ? `${employment.workplace} · ` : ""}
+            {employment?.payDay ? t("home.paydayInfo", { day: employment.payDay }) : ""}
+          </p>
+
+          <div className="mt-5 flex gap-2 pt-3 border-t border-white/15">
+            <Link
+              href="/paycheck"
+              className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-2xl bg-white text-primary px-4 py-2.5 text-xs font-bold shadow-md transition-transform hover:scale-[1.02] active:scale-[0.98]"
+            >
+              <Wallet className="size-4" />
+              <span>{t("home.goPay")}</span>
+            </Link>
             <Link
               href="/records"
-              className={styles.iconLink}
-              aria-label="내 확인 기록 보기"
+              className="inline-flex items-center justify-center gap-1 rounded-2xl bg-white/15 px-3 py-2.5 text-xs font-semibold text-white backdrop-blur hover:bg-white/25 transition-colors"
             >
-              <History aria-hidden="true" />
-            </Link>
-            <Link
-              href="/profile"
-              className={styles.iconLink}
-              aria-label="내 프로필 보기"
-            >
-              <UserRound aria-hidden="true" />
+              <History className="size-4" />
+              <span>{t("records.nav")}</span>
             </Link>
           </div>
-        </div>
-      </header>
+        </section>
 
-      <main className={styles.main}>
-        {!hydrated ? (
-          <DashboardSkeleton />
-        ) : (
-          <>
-            <section
-              className={styles.payHero}
-              aria-labelledby="yearly-pay-title"
+        {/* 2. 3대 금융권리 상태 카드 (급여, 세금, 출국) */}
+        <section className="space-y-3">
+          <h2 className="text-sm font-bold text-foreground">
+            {t("home.sec.financial")}
+          </h2>
+
+          <div className="grid gap-3">
+            {/* 급여 (PayCheck) 상태 카드 */}
+            <Link
+              href="/paycheck"
+              className="group flex items-center justify-between rounded-3xl border border-border/80 bg-card p-4 shadow-sm transition-all hover:border-primary/40 hover:shadow-md active:scale-[0.99]"
             >
-              <div className={styles.payHeroTop}>
-                <div>
-                  <p id="yearly-pay-title">{paySummaryLabel}</p>
-                  <strong>
-                    {hasPaySummary ? formatWon(yearlyPay) : '아직 집계 전'}
-                  </strong>
-                </div>
-                <span className={styles.heroIcon}>
-                  <Wallet aria-hidden="true" />
-                </span>
-              </div>
-
-              <div className={styles.heroMeta}>
-                <div>
-                  <span>기록 개월</span>
-                  <strong>
-                    {monthsRecorded > 0 ? `${monthsRecorded}개월` : '기록 없음'}
-                  </strong>
+              <div className="flex items-center gap-3">
+                <div className="rounded-2xl bg-primary/10 p-3 text-primary transition-transform group-hover:scale-105">
+                  <Wallet className="size-5" />
                 </div>
                 <div>
-                  <span>전체 확인 기록</span>
-                  <strong>{results.length}건</strong>
-                </div>
-                <div>
-                  <span>세금 추가 확인</span>
-                  <strong>
-                    {latestTax ? `${needsReviewCount}건` : '확인 전'}
-                  </strong>
-                </div>
-              </div>
-
-              <p className={styles.heroNotice}>
-                <ShieldCheck aria-hidden="true" />
-                {results[0]
-                  ? `최근 업데이트 ${formatShortDate(results[0].createdAt)} · 저장 결과 기준`
-                  : '확인을 완료하면 이 브라우저에서 자동으로 집계해요.'}
-              </p>
-            </section>
-
-            <NextAction
-              latestPay={latestPay}
-              latestTax={latestTax}
-              latestExit={latestExit}
-              needsReviewCount={needsReviewCount}
-              hasResults={results.length > 0}
-            />
-
-            <section
-              className={styles.section}
-              aria-labelledby="check-status-title"
-            >
-              <div className={styles.sectionHeading}>
-                <div>
-                  <p>RIGHTS CHECK</p>
-                  <h2 id="check-status-title">나의 확인 현황</h2>
-                </div>
-                <span>저장 결과 기준</span>
-              </div>
-
-              <PayStatusCard result={latestPay} />
-
-              <div className={styles.checkGrid}>
-                <TaxStatusCard result={latestTax} />
-                <ExitStatusCard result={latestExit} />
-              </div>
-            </section>
-
-            <section
-              className={styles.recentSection}
-              aria-labelledby="recent-title"
-            >
-              <div className={styles.recentHeading}>
-                <div>
-                  <History aria-hidden="true" />
-                  <h2 id="recent-title">최근 확인 기록</h2>
-                </div>
-                <Link href="/records">
-                  전체 보기 <ChevronRight aria-hidden="true" />
-                </Link>
-              </div>
-
-              {recentResults.length ? (
-                <ul className={styles.recentList}>
-                  {recentResults.map((result) => (
-                    <RecentResult key={result.id} result={result} />
-                  ))}
-                </ul>
-              ) : (
-                <div className={styles.recentEmpty}>
-                  <History aria-hidden="true" />
-                  <div>
-                    <strong>아직 저장된 확인 기록이 없습니다</strong>
-                    <p>확인을 완료하면 최근 결과가 이곳에 표시돼요.</p>
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-bold text-foreground">
+                      {t("tab.pay")} (PayCheck)
+                    </span>
+                    <span className="rounded-lg bg-signal/15 px-2 py-0.5 text-[10px] font-bold text-signal">
+                      {t("home.badge.tripleCheck")}
+                    </span>
                   </div>
+                  <p className="mt-0.5 text-xs text-muted-foreground">
+                    {latestPayRecord
+                      ? `${latestPayRecord.period} · ${
+                          latestPayRecord.analysis.overallStatus === "MATCH"
+                            ? t("home.paycheckMatch")
+                            : t("home.paycheckNeedsAction")
+                        }`
+                      : t("home.paycheckLead")}
+                  </p>
                 </div>
-              )}
-            </section>
-          </>
-        )}
-      </main>
+              </div>
+              <ChevronRight className="size-5 text-muted-foreground transition-transform group-hover:translate-x-1" />
+            </Link>
 
-      <nav className={styles.bottomNav} aria-label="주요 메뉴">
-        <ul>
-          {NAV_ITEMS.map((item) => {
-            const Icon = item.icon;
-            const active = item.href === '/dashboard';
-            return (
-              <li key={item.href}>
-                <Link
-                  href={item.href}
-                  className={active ? styles.navActive : undefined}
-                  aria-current={active ? 'page' : undefined}
+            {/* 세금 (TaxCheck) 상태 카드 */}
+            <Link
+              href="/taxcheck"
+              className="group flex items-center justify-between rounded-3xl border border-border/80 bg-card p-4 shadow-sm transition-all hover:border-primary/40 hover:shadow-md active:scale-[0.99]"
+            >
+              <div className="flex items-center gap-3">
+                <div className="rounded-2xl bg-purple-500/10 p-3 text-purple-600 dark:text-purple-300 transition-transform group-hover:scale-105">
+                  <Receipt className="size-5" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-bold text-foreground">
+                      {t("tab.tax")} (TaxCheck)
+                    </span>
+                    <span className="rounded-lg bg-purple-500/15 px-2 py-0.5 text-[10px] font-bold text-purple-700 dark:text-purple-300">
+                      {t("tab.tax")}
+                    </span>
+                  </div>
+                  <p className="mt-0.5 text-xs text-muted-foreground">
+                    {latestTaxResult && "applicableCount" in latestTaxResult
+                      ? t("home.taxResultLine", {
+                          applicable: latestTaxResult.applicableCount,
+                          needsAction: latestTaxResult.needsActionCount,
+                        })
+                      : t("home.taxLead")}
+                  </p>
+                </div>
+              </div>
+              <ChevronRight className="size-5 text-muted-foreground transition-transform group-hover:translate-x-1" />
+            </Link>
+
+            {/* 출국 (ExitCheck) 상태 카드 */}
+            <Link
+              href="/exitcheck"
+              className="group flex items-center justify-between rounded-3xl border border-border/80 bg-card p-4 shadow-sm transition-all hover:border-primary/40 hover:shadow-md active:scale-[0.99]"
+            >
+              <div className="flex items-center gap-3">
+                <div className="rounded-2xl bg-warn/10 p-3 text-warn transition-transform group-hover:scale-105">
+                  <Plane className="size-5" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-bold text-foreground">
+                      {t("tab.exit")} (ExitCheck)
+                    </span>
+                    <span className="rounded-lg bg-warn/15 px-2 py-0.5 text-[10px] font-bold text-warn">
+                      {exitIso ? t("home.exitDday", { n: dDay(exitIso) }) : t("home.exitNone")}
+                    </span>
+                  </div>
+                  <p className="mt-0.5 text-xs text-muted-foreground">
+                    {latestExitResult && "readyCount" in latestExitResult
+                      ? t("home.exitResultLine", {
+                          ready: latestExitResult.readyCount,
+                          total: latestExitResult.totalCount,
+                        })
+                      : t("home.exitLead")}
+                  </p>
+                </div>
+              </div>
+              <ChevronRight className="size-5 text-muted-foreground transition-transform group-hover:translate-x-1" />
+            </Link>
+          </div>
+        </section>
+
+        {/* 3. 다가오는 일정 캘린더 요약 */}
+        <section className="rounded-3xl border border-border/80 bg-card p-5 shadow-sm space-y-3">
+          <div className="flex items-center justify-between">
+            <h2 className="text-sm font-bold text-foreground">
+              {t("home.upcoming")}
+            </h2>
+            <Link
+              href="/calendar"
+              className="inline-flex items-center gap-1 text-xs font-bold text-primary hover:underline"
+            >
+              <span>{t("home.openCalendar")}</span>
+              <ChevronRight className="size-3.5" />
+            </Link>
+          </div>
+
+          {upcomingEvents.length === 0 ? (
+            <p className="text-xs text-muted-foreground py-2">
+              {t("home.noEvents")}
+            </p>
+          ) : (
+            <div className="space-y-2">
+              {upcomingEvents.map((evt) => (
+                <div
+                  key={evt.id}
+                  className="flex items-center justify-between rounded-2xl bg-muted/40 p-3 text-xs"
                 >
-                  <Icon aria-hidden="true" />
-                  <span>{item.label}</span>
-                </Link>
-              </li>
-            );
-          })}
-        </ul>
-      </nav>
-    </div>
-  );
-}
-
-function NextAction({
-  latestPay,
-  latestTax,
-  latestExit,
-  needsReviewCount,
-  hasResults,
-}: {
-  latestPay: SavedPayCheckResult | undefined;
-  latestTax: SavedTaxCheckResult | undefined;
-  latestExit: SavedExitCheckResult | undefined;
-  needsReviewCount: number;
-  hasResults: boolean;
-}) {
-  let title = '첫 금융권리 확인을 시작해보세요';
-  let description =
-    'TaxCheck로 현재 정보와 준비해야 할 세금 자료를 먼저 확인할 수 있어요.';
-  let href = '/taxcheck';
-  let linkLabel = 'TaxCheck 시작하기';
-
-  if (latestTax && needsReviewCount > 0) {
-    title = `세금 항목 ${needsReviewCount}개를 추가로 확인해 주세요`;
-    description =
-      '판단에 필요한 정보나 서류가 부족한 항목이 있어요. 저장된 판정과 다음 행동을 확인해 보세요.';
-    href = '/records';
-    linkLabel = '판정 상세 보기';
-  } else if (hasResults && !latestPay) {
-    title = '이번 달 급여가 맞는지 확인해 보세요';
-    description =
-      '계약서·급여명세서·입금내역을 비교하면 금액 차이와 확인할 항목을 찾을 수 있어요.';
-    href = '/paycheck';
-    linkLabel = 'PayCheck 시작하기';
-  } else if (hasResults && !latestExit) {
-    title = '출국 예정이 있다면 준비 항목을 확인해 보세요';
-    description =
-      '보험·연금·퇴직금 등 출국 전에 확인할 권리와 필요한 자료를 미리 정리할 수 있어요.';
-    href = '/exitcheck';
-    linkLabel = 'ExitCheck 시작하기';
-  } else if (hasResults) {
-    title = '저장된 확인 결과를 다시 살펴보세요';
-    description =
-      '최근 급여·세금·출국 결과와 추가로 확인할 항목을 기록 화면에서 볼 수 있어요.';
-    href = '/records';
-    linkLabel = '최근 기록 보기';
-  }
-
-  return (
-    <section className={styles.actionBanner} aria-label="추천하는 다음 행동">
-      <span>
-        <CircleAlert aria-hidden="true" />
-      </span>
-      <div>
-        <small>NEXT ACTION</small>
-        <strong>{title}</strong>
-        <p>{description}</p>
+                  <div className="flex items-center gap-2.5">
+                    <CalendarClock className="size-4 text-primary" />
+                    <div>
+                      <span className="font-bold text-foreground">
+                        {evt.title}
+                      </span>
+                      <p className="text-[11px] text-muted-foreground">
+                        {formatKDate(evt.date)} {evt.time ? `· ${evt.time}` : ""}
+                      </p>
+                    </div>
+                  </div>
+                  <span className="rounded-lg bg-secondary px-2 py-0.5 text-[10px] font-semibold text-secondary-foreground">
+                    {EVENT_TYPE_LABEL_KEY[evt.type] ? t(EVENT_TYPE_LABEL_KEY[evt.type] as any) : evt.type}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+        </section>
       </div>
-      <Link href={href}>
-        {linkLabel} <ArrowRight aria-hidden="true" />
-      </Link>
-    </section>
+    </AppShell>
   );
-}
-
-function PayStatusCard({
-  result,
-}: {
-  result: SavedPayCheckResult | undefined;
-}) {
-  const status = payStatus(result?.status);
-
-  return (
-    <article className={styles.payCard}>
-      <div className={styles.cardTop}>
-        <span className={`${styles.cardIcon} ${styles.payIcon}`}>
-          <Wallet aria-hidden="true" />
-        </span>
-        <div>
-          <p>이번 달 급여</p>
-          <h3>{result ? result.payPeriod : '아직 확인하지 않음'}</h3>
-        </div>
-        <span className={`${styles.statusPill} ${styles[status.tone]}`}>
-          {status.label}
-        </span>
-      </div>
-
-      <p className={styles.cardDescription}>
-        {result
-          ? `최근 확인된 실제 입금액은 ${
-              result.paidAmount === null
-                ? '확인할 수 없습니다'
-                : formatWon(result.paidAmount)
-            }.`
-          : '급여 확인 결과가 없습니다. 서류를 비교해 이번 달 급여를 확인해 보세요.'}
-      </p>
-
-      <Link href="/paycheck" className={styles.cardLink}>
-        {result ? '다시 확인하기' : '급여 확인 시작하기'}
-        <ArrowRight aria-hidden="true" />
-      </Link>
-    </article>
-  );
-}
-
-function TaxStatusCard({
-  result,
-}: {
-  result: SavedTaxCheckResult | undefined;
-}) {
-  const needsReview = result ? taxReviewCount(result) : 0;
-  const checkedCount = result
-    ? Math.max(result.totalCount - needsReview, 0)
-    : 0;
-
-  return (
-    <Link href="/taxcheck" className={styles.miniCard}>
-      <div className={styles.miniTop}>
-        <span className={`${styles.cardIcon} ${styles.taxIcon}`}>
-          <Receipt aria-hidden="true" />
-        </span>
-        <span
-          className={`${styles.statusDot} ${
-            !result
-              ? styles.dotNeutral
-              : needsReview === 0
-                ? styles.dotOk
-                : styles.dotNeed
-          }`}
-        />
-      </div>
-      <h3>TaxCheck</h3>
-      <p>
-        {result
-          ? `${result.totalCount}개 항목 확인 · ${needsReview}개 추가 확인`
-          : '아직 세금 항목을 확인하지 않았어요.'}
-      </p>
-      {result ? (
-        <div className={styles.progressArea}>
-          <progress
-            max={Math.max(result.totalCount, 1)}
-            value={checkedCount}
-            aria-label={`TaxCheck ${checkedCount}개 확인 완료`}
-          />
-          <small>
-            {checkedCount}/{result.totalCount} 확인 완료
-          </small>
-        </div>
-      ) : null}
-      <strong>
-        {result ? '다시 확인하기' : '세금 확인 시작하기'}
-        <ChevronRight aria-hidden="true" />
-      </strong>
-    </Link>
-  );
-}
-
-function ExitStatusCard({
-  result,
-}: {
-  result: SavedExitCheckResult | undefined;
-}) {
-  return (
-    <Link href="/exitcheck" className={styles.miniCard}>
-      <div className={styles.miniTop}>
-        <span className={`${styles.cardIcon} ${styles.exitIcon}`}>
-          <Plane aria-hidden="true" />
-        </span>
-        <span
-          className={`${styles.statusDot} ${
-            result && result.readyCount === result.totalCount
-              ? styles.dotOk
-              : styles.dotNeutral
-          }`}
-        />
-      </div>
-      <h3>ExitCheck</h3>
-      <p>
-        {result
-          ? `${result.totalCount}개 중 ${result.readyCount}개 준비 완료`
-          : '출국일이 정해지면 준비 항목을 확인해요.'}
-      </p>
-      {result ? (
-        <div className={styles.progressArea}>
-          <progress
-            max={Math.max(result.totalCount, 1)}
-            value={result.readyCount}
-            aria-label={`ExitCheck ${result.readyCount}개 준비 완료`}
-          />
-          <small>
-            {result.readyCount}/{result.totalCount} 준비 완료
-          </small>
-        </div>
-      ) : null}
-      <strong>
-        {result ? '다시 확인하기' : '출국 확인 시작하기'}
-        <ChevronRight aria-hidden="true" />
-      </strong>
-    </Link>
-  );
-}
-
-function RecentResult({ result }: { result: SavedResult }) {
-  const meta = KIND_META[result.kind];
-  const Icon = meta.icon;
-  const needsReview = resultNeedsReview(result);
-  const ResultStatusIcon = needsReview ? CircleAlert : CheckCircle2;
-
-  return (
-    <li>
-      <span className={`${styles.recentIcon} ${styles[meta.className]}`}>
-        <Icon aria-hidden="true" />
-      </span>
-      <div>
-        <p>
-          {meta.label} 확인
-          <small>{formatShortDate(result.createdAt)}</small>
-        </p>
-        <strong>{recentSummary(result)}</strong>
-      </div>
-      <ResultStatusIcon
-        className={needsReview ? styles.recentWarning : undefined}
-        aria-hidden="true"
-      />
-    </li>
-  );
-}
-
-function DashboardSkeleton() {
-  return (
-    <output className={styles.skeleton}>
-      <span className={styles.screenReaderOnly}>대시보드 불러오는 중</span>
-      <span className={styles.skeletonHero} aria-hidden="true" />
-      <span className={styles.skeletonCard} aria-hidden="true" />
-      <span className={styles.skeletonCard} aria-hidden="true" />
-    </output>
-  );
-}
-
-function taxReviewCount(result: SavedTaxCheckResult) {
-  const unknownCount =
-    result.unknownCount ??
-    result.cards?.filter((card) => card.status === '현재 정보로 판단 불가')
-      .length ??
-    0;
-  return result.needsActionCount + unknownCount;
-}
-
-function payStatus(status: string | undefined) {
-  switch (status) {
-    case 'MATCH':
-      return { label: '일치', tone: 'statusOk' } as const;
-    case 'EXPLANATION_REQUIRED':
-      return { label: '확인 필요', tone: 'statusNeed' } as const;
-    case 'INSUFFICIENT_DATA':
-      return { label: '자료 부족', tone: 'statusNeed' } as const;
-    case 'USER_CONFIRMATION':
-      return { label: '확인 대기', tone: 'statusNeutral' } as const;
-    default:
-      return { label: '확인 전', tone: 'statusNeutral' } as const;
-  }
-}
-
-function recentSummary(result: SavedResult) {
-  switch (result.kind) {
-    case 'pay':
-      return `${result.payPeriod || '기간 미확인'} · ${
-        result.workplace || '근무지 미입력'
-      }`;
-    case 'tax':
-      return `${result.year}년 · ${result.totalCount}개 중 ${taxReviewCount(
-        result,
-      )}개 추가 확인`;
-    case 'exit':
-      return `${result.totalCount}개 중 ${result.readyCount}개 준비 완료`;
-  }
-}
-
-function resultNeedsReview(result: SavedResult) {
-  switch (result.kind) {
-    case 'pay':
-      return result.status !== 'MATCH';
-    case 'tax':
-      return taxReviewCount(result) > 0;
-    case 'exit':
-      return result.readyCount < result.totalCount;
-  }
-}
-
-function formatShortDate(iso: string) {
-  const parsed = new Date(iso);
-  if (Number.isNaN(parsed.getTime())) return '날짜 미확인';
-  return parsed.toLocaleDateString('ko-KR', {
-    month: 'short',
-    day: 'numeric',
-  });
 }

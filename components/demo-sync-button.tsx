@@ -30,6 +30,7 @@ export function DemoSyncButton({
 }: DemoSyncButtonProps) {
   const [isSyncing, setIsSyncing] = useState(false);
   const { t } = useT();
+  const { refreshFromBackend } = usePayCycle();
 
   const handleSync = async () => {
     if (isSyncing) return;
@@ -40,13 +41,10 @@ export function DemoSyncButton({
       const { result, isMock } = await triggerSalaryMonitoringBatchApi();
 
       // 2. 부드러운 데모 경험을 위한 약간의 시각적 딜레이 (사용자가 로딩 상태 인지)
-      await new Promise((r) => setTimeout(r, 600));
+      await new Promise((r) => setTimeout(r, 500));
 
-      // 3. 최신 Paycheck 및 캘린더 데이터 동기화 조회
-      await Promise.allSettled([
-        getPaychecksApi(),
-        getCalendarEventsApi(),
-      ]);
+      // 3. 최신 Paycheck 및 캘린더 데이터 동기화 조회 및 React 상태 즉시 갱신
+      await refreshFromBackend();
 
       // 결과 건수 파싱 (배열 형태 or processedCount DTO)
       const count = Array.isArray(result)

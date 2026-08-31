@@ -4,7 +4,7 @@ import Link from "next/link";
 import { AppShell } from "@/components/app-shell";
 import { useT } from "@/i18n";
 import { Button } from "@/components/ui/button";
-import { Wallet, CalendarClock, UserRound, Sparkles } from "lucide-react";
+import { Wallet, CalendarClock, UserRound, Sparkles, Receipt, Plane } from "lucide-react";
 
 export default function HomePage() {
   const { t } = useT();
@@ -23,26 +23,42 @@ export default function HomePage() {
         </div>
 
         <div className="w-full space-y-3 pt-2">
-          <Link href="/paycheck" className="block">
+          <Link href="/dashboard" className="block">
             <Button size="lg" className="w-full rounded-2xl py-6 text-base font-bold shadow-md">
-              <Wallet className="mr-2 size-5" />
-              {t("tab.pay")} (급여 3중 대조)
+              <Sparkles className="mr-2 size-5" />
+              {t("landing.ctaBack")}
             </Button>
           </Link>
 
-          <Link href="/calendar" className="block">
-            <Button variant="outline" size="lg" className="w-full rounded-2xl py-6 text-sm font-semibold">
-              <CalendarClock className="mr-2 size-5" />
-              {t("tab.calendar")} (일정 관리)
-            </Button>
-          </Link>
+          <div className="grid grid-cols-2 gap-2.5">
+            <Link href="/paycheck" className="block">
+              <Button variant="outline" className="w-full rounded-2xl py-5 text-xs font-bold border-border/80">
+                <Wallet className="mr-1.5 size-4 text-primary" />
+                {t("tab.pay")}
+              </Button>
+            </Link>
 
-          <Link href="/profile" className="block">
-            <Button variant="ghost" size="lg" className="w-full rounded-2xl py-6 text-sm font-semibold border border-border">
-              <UserRound className="mr-2 size-5" />
-              {t("profile.title")} (프로필 및 근로 조건)
-            </Button>
-          </Link>
+            <Link href="/taxcheck" className="block">
+              <Button variant="outline" className="w-full rounded-2xl py-5 text-xs font-bold border-border/80">
+                <Receipt className="mr-1.5 size-4 text-purple-600" />
+                {t("tab.tax")}
+              </Button>
+            </Link>
+
+            <Link href="/exitcheck" className="block">
+              <Button variant="outline" className="w-full rounded-2xl py-5 text-xs font-bold border-border/80">
+                <Plane className="mr-1.5 size-4 text-warn" />
+                {t("tab.exit")}
+              </Button>
+            </Link>
+
+            <Link href="/calendar" className="block">
+              <Button variant="outline" className="w-full rounded-2xl py-5 text-xs font-bold border-border/80">
+                <CalendarClock className="mr-1.5 size-4 text-info" />
+                {t("tab.calendar")}
+              </Button>
+            </Link>
+          </div>
         </div>
       </div>
     </AppShell>

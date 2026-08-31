@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   CalendarClock,
   ChevronLeft,
@@ -28,13 +28,14 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { usePayCycle } from "@/state/paycycle-context";
-import { useT, type DictKey } from "@/i18n";
+import { useT, type TKey } from "@/i18n";
+import type { UiLocale } from "@/i18n/dict";
 import { isoDate, formatKDate } from "@/lib/paycycle/format";
 import type { CalendarEvent, EventType } from "@/lib/paycycle/types";
 
 const EVENT_META: Record<
   EventType,
-  { labelKey: DictKey; tone: string; chipStyle: string; icon: typeof CalendarClock }
+  { labelKey: TKey; tone: string; chipStyle: string; icon: typeof CalendarClock }
 > = {
   PAYDAY: {
     labelKey: "cal.type.payday",
@@ -68,15 +69,25 @@ const EVENT_META: Record<
   },
 };
 
-const WEEKDAYS = ["일", "월", "화", "수", "목", "금", "토"];
+const WEEKDAYS_MAP: Record<UiLocale, string[]> = {
+  ko: ["일", "월", "화", "수", "목", "금", "토"],
+  en: ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"],
+  vi: ["CN", "T2", "T3", "T4", "T5", "T6", "T7"],
+  zh: ["日", "一", "二", "三", "四", "五", "六"],
+};
 
 export default function CalendarPage() {
-  const { state, hydrated, addEvent, removeEvent, toggleEvent } = usePayCycle();
-  const { t } = useT();
+  const { state, hydrated, addEvent, removeEvent, toggleEvent, refreshFromBackend } = usePayCycle();
+  const { t, locale } = useT();
+  const weekdays = WEEKDAYS_MAP[locale] || WEEKDAYS_MAP.ko;
 
   const [cursor, setCursor] = useState(() => new Date());
   const [selectedDate, setSelectedDate] = useState<string>(() => isoDate(new Date()));
   const [dialogOpen, setDialogOpen] = useState(false);
+
+  useEffect(() => {
+    void refreshFromBackend();
+  }, [refreshFromBackend]);
 
   const [newTitle, setNewTitle] = useState("");
   const [newType, setNewType] = useState<EventType>("PERSONAL");
@@ -200,7 +211,7 @@ export default function CalendarPage() {
         <div className="flex items-center gap-2">
           <CalendarIcon className="size-5 text-primary" />
           <h2 className="text-lg font-black text-foreground tracking-tight">
-            {currentYear}년 {currentMonth + 1}월
+            {t("cal.yearMonth", { year: currentYear, month: currentMonth + 1 })}
           </h2>
         </div>
 
@@ -218,7 +229,7 @@ export default function CalendarPage() {
       <div className="mt-5 rounded-3xl bg-card border border-border/70 p-5 shadow-xs backdrop-blur-md space-y-2">
         {/* 요일 헤더 */}
         <div className="grid grid-cols-7 text-center pb-3 border-b border-border/40">
-          {WEEKDAYS.map((w, idx) => (
+          {weekdays.map((w, idx) => (
             <span
               key={w}
               className={`text-xs font-black tracking-wide ${
@@ -292,7 +303,7 @@ export default function CalendarPage() {
           <div className="flex items-center gap-2">
             <Sparkles className="size-4 text-primary" />
             <h3 className="text-sm font-extrabold text-foreground">
-              {formatKDate(selectedDate)} 일정 ({selectedDayEvents.length}개)
+              {t("cal.dayEventsCount", { date: formatKDate(selectedDate), count: selectedDayEvents.length })}
             </h3>
           </div>
 
@@ -308,7 +319,7 @@ export default function CalendarPage() {
 
         {selectedDayEvents.length === 0 ? (
           <div className="rounded-3xl bg-card border border-border/60 p-8 text-center text-xs font-semibold text-muted-foreground shadow-xs backdrop-blur-md">
-            선택한 날짜에 등록된 일정이 없습니다. + 버튼을 눌러 일정을 등록해보세요!
+            {t("cal.noSelectedEvents")}
           </div>
         ) : (
           selectedDayEvents.map((evt) => {
@@ -398,7 +409,7 @@ export default function CalendarPage() {
 
             <div>
               <label className="text-xs font-bold text-foreground mb-1 block">
-                시간 (HH:mm)
+                {t("cal.time")}
               </label>
               <Input
                 type="time"
