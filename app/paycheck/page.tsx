@@ -413,6 +413,22 @@ export default function PayCheckPage() {
       }
     } catch (err) {
       console.warn("Failed to fetch bank transactions:", err);
+      if (currentSeq === bankReqSeqRef.current) {
+        setBankTx(null);
+        setCandidates((prev) => ({
+          ...prev,
+          deposit: [],
+        }));
+        setDocs((prev) => {
+          if (prev.deposit?.source === "bank_auto") {
+            return {
+              ...prev,
+              deposit: defaultDoc("deposit", targetPeriod),
+            };
+          }
+          return prev;
+        });
+      }
     } finally {
       if (currentSeq === bankReqSeqRef.current) {
         setSyncingBank(false);
@@ -440,7 +456,34 @@ export default function PayCheckPage() {
     void fetchBankSalary(period);
   }, [period, fetchBankSalary, resolveContractDoc, savedContract]);
 
-  const handleStartNewCheck = () => {
+  const [documentIds, setDocumentIds] = useState<Record<DocKind, number | undefined>>({
+    contract: undefined,
+    statement: undefined,
+    deposit: undefined,
+  });
+
+  const patchTimerRef = useRef<Record<DocKind, NodeJS.Timeout | undefined>>({
+    contract: undefined,
+    statement: undefined,
+    deposit: undefined,
+  });
+
+  const handleStartNewCheck = useCallback(() => {
+    // 모든 대기 중인 PATCH 타이머 취소
+    (Object.keys(patchTimerRef.current) as DocKind[]).forEach((k) => {
+      if (patchTimerRef.current[k]) {
+        clearTimeout(patchTimerRef.current[k]);
+        patchTimerRef.current[k] = undefined;
+      }
+    });
+
+    // documentIds 초기화
+    setDocumentIds({
+      contract: undefined,
+      statement: undefined,
+      deposit: undefined,
+    });
+
     const cDoc = resolveContractDoc(period, docs.contract);
     setDocs({
       contract: cDoc,
@@ -456,7 +499,7 @@ export default function PayCheckPage() {
     setAnalysis(null);
     void fetchBankSalary(period);
     setStep(0);
-  };
+  }, [docs.contract, fetchBankSalary, period, resolveContractDoc]);
 
   const rec = state.payRecords.find((r) => r.period === period);
 
@@ -515,7 +558,7 @@ export default function PayCheckPage() {
       requiredEvidence: [],
       sources: [],
       evidence: [],
-    };
+      };
   }, [finding, analysis, period, depositNetPay]);
 
   const currentPaycheckId = useMemo(() => {
@@ -526,18 +569,6 @@ export default function PayCheckPage() {
     }
     return undefined;
   }, [activePaycheckId, rec]);
-
-  const [documentIds, setDocumentIds] = useState<Record<DocKind, number | undefined>>({
-    contract: undefined,
-    statement: undefined,
-    deposit: undefined,
-  });
-
-  const patchTimerRef = useRef<Record<DocKind, NodeJS.Timeout | undefined>>({
-    contract: undefined,
-    statement: undefined,
-    deposit: undefined,
-  });
 
   const syncDocumentExtractedData = useCallback((kind: DocKind, fields: DocFields) => {
     const docId = documentIds[kind];
@@ -594,6 +625,13 @@ export default function PayCheckPage() {
   );
 
   const handleUpload = async (kind: DocKind, file: File) => {
+    // 재업로드 시 이전 타이머 및 documentId 초기화
+    if (patchTimerRef.current[kind]) {
+      clearTimeout(patchTimerRef.current[kind]);
+      patchTimerRef.current[kind] = undefined;
+    }
+    setDocumentIds((prev) => ({ ...prev, [kind]: undefined }));
+
     setReading((p) => ({ ...p, [kind]: true }));
     const reader = new FileReader();
     reader.onload = async (e) => {
