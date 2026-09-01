@@ -1,7 +1,11 @@
 import type { AiPaycheckReportDto } from '@/app/api/agent/paycheck/route';
 import { QUESTION_LANGUAGE, type UiLocale } from '@/i18n/dict';
 import type { PayFinding } from '@/lib/paycycle/types';
-import { explainPaycheckApi, translateAiApi } from '@/services/api';
+import {
+  chatAssistantApi,
+  explainPaycheckApi,
+  translateAiApi,
+} from '@/services/api';
 
 export type { AiPaycheckReportDto };
 
@@ -339,6 +343,17 @@ export async function askAssistant(
   context: string,
   locale: UiLocale,
 ): Promise<{ text: string | null; error: string | null }> {
+  // 1. Spring Boot 백엔드 POST /api/agent/chat 연동 (서버가 직접 사용자 데이터로 컨텍스트 구성)
+  try {
+    const backendRes = await chatAssistantApi(question, locale);
+    if (!backendRes.isMock && backendRes.data.ok && backendRes.data.text) {
+      return { text: backendRes.data.text, error: null };
+    }
+  } catch {
+    /* 아래 Next.js 내부 route로 폴백 */
+  }
+
+  // 2. Next.js 내부 route(Gemini) 또는 로컬 규칙 엔진 Fallback
   try {
     const res = await fetch('/api/agent/chat', {
       method: 'POST',
