@@ -290,7 +290,11 @@ export function PayCycleProvider({ children }: { children: ReactNode }) {
         });
         const mergedRecords = [
           ...preservedRecords,
-          ...prev.payRecords.filter((r) => !existingRecordKeys.has(r.period || r.id)),
+          ...prev.payRecords.filter(
+            (r) =>
+              !existingRecordKeys.has(r.period || r.id) &&
+              r.period !== "2026-09"
+          ),
         ];
 
         const prevEventsMap = new Map(prev.events.map((e) => [e.id, e]));
@@ -301,7 +305,11 @@ export function PayCycleProvider({ children }: { children: ReactNode }) {
         });
         const mergedEvents = [
           ...preservedEvents,
-          ...prev.events.filter((e) => !existingEventIds.has(e.id)),
+          ...prev.events.filter(
+            (e) =>
+              !existingEventIds.has(e.id) &&
+              !(e.type === "PAYCHECK" && e.date.startsWith("2026-09"))
+          ),
         ];
 
         return {

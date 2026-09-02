@@ -875,8 +875,13 @@ export default function PayCheckPage() {
       statementNet !== undefined && depositNet !== undefined
         ? depositNet - statementNet
         : undefined;
-    const expectedDate = docs.statement?.fields.payDate || `${period}-25`;
-    const actualDate = docs.deposit?.fields.payDate || `${period}-25T09:14:00`;
+    const rawExpected = docs.statement?.fields.payDate || `${period}-25`;
+    const expectedDate = rawExpected.includes("T") ? rawExpected.split("T")[0] : rawExpected.slice(0, 10);
+
+    const rawActual = docs.deposit?.fields.payDate;
+    const actualDate = rawActual
+      ? (rawActual.includes("T") ? rawActual : `${rawActual.slice(0, 10)}T09:14:00`)
+      : `${period}-25T09:14:00`;
 
     let backendPaycheckId: number | undefined;
     try {
