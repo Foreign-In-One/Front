@@ -1,7 +1,5 @@
-"use client";
+'use client';
 
-import { useEffect, useMemo, useRef, useState } from "react";
-import Link from "next/link";
 import {
   AlertTriangle,
   ArrowLeft,
@@ -12,16 +10,18 @@ import {
   RotateCcw,
   ShieldCheck,
   Wallet,
-} from "lucide-react";
-import { toast } from "sonner";
-import { AppShell } from "@/components/app-shell";
-import { Button } from "@/components/ui/button";
-import { usePayCycle } from "@/state/paycycle-context";
-import { useT } from "@/i18n";
-import { formatKDate } from "@/lib/paycycle/format";
-import { evaluateExit } from "@/lib/paycycle/rule-engine";
-import { saveExitCheckResult } from "@/lib/paycycle/result-storage";
-import type { ExitClaim, ExitProfile } from "@/lib/paycycle/types";
+} from 'lucide-react';
+import Link from 'next/link';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { toast } from 'sonner';
+import { AppShell } from '@/components/app-shell';
+import { Button } from '@/components/ui/button';
+import { useT } from '@/i18n';
+import { formatKDate } from '@/lib/paycycle/format';
+import { saveExitCheckResult } from '@/lib/paycycle/result-storage';
+import { evaluateExit } from '@/lib/paycycle/rule-engine';
+import type { ExitClaim, ExitProfile } from '@/lib/paycycle/types';
+import { usePayCycle } from '@/state/paycycle-context';
 
 const STEP_TOTAL = 4;
 
@@ -53,13 +53,11 @@ export default function ExitCheckPage() {
 
   // 프로필 옵션 변경 및 전역 state.exitProfile 실시간 동기화
   const handleUpdateExitProfile = (patch: Partial<ExitProfile>) => {
-    setLocalProfile((prev) => {
-      const next = { ...prev, ...patch };
-      if (hydrated) {
-        updateExitProfile(next);
-      }
-      return next;
-    });
+    const next = { ...localProfile, ...patch };
+    setLocalProfile(next);
+    if (hydrated) {
+      updateExitProfile(next);
+    }
   };
 
   const savedRef = useRef<boolean>(false);
@@ -71,15 +69,19 @@ export default function ExitCheckPage() {
   const totalMonths = useMemo(() => {
     if (!employment?.workStartDate?.value) return null;
     const parseLocal = (str: string) => {
-      const [y, m, d] = str.split("-").map(Number);
+      const [y, m, d] = str.split('-').map(Number);
       return y && m && d ? new Date(y, m - 1, d) : new Date(`${str}T00:00:00`);
     };
     const start = parseLocal(employment.workStartDate.value);
-    const end = employment.exitDate?.value ? parseLocal(employment.exitDate.value) : new Date();
+    const end = employment.exitDate?.value
+      ? parseLocal(employment.exitDate.value)
+      : new Date();
     if (isNaN(start.getTime()) || isNaN(end.getTime())) return null;
     if (end < start) return null; // 출국일이 입사일보다 빠른 경우 indeterminate
 
-    let months = (end.getFullYear() - start.getFullYear()) * 12 + (end.getMonth() - start.getMonth());
+    let months =
+      (end.getFullYear() - start.getFullYear()) * 12 +
+      (end.getMonth() - start.getMonth());
     if (end.getDate() < start.getDate()) {
       months -= 1;
     }
@@ -95,7 +97,7 @@ export default function ExitCheckPage() {
   }, [employment, localProfile, totalMonths]);
 
   const readyCount = claims.filter(
-    (c) => c.status === "적용 가능성 있음" || c.status === "대상 후보"
+    (c) => c.status === '적용 가능성 있음' || c.status === '대상 후보',
   ).length;
 
   const canGoNext = useMemo(() => {
@@ -124,32 +126,42 @@ export default function ExitCheckPage() {
       if (res) {
         savedRef.current = true;
         updateExitProfile(localProfile);
-        toast.success(t("exit.saved"));
+        toast.success(t('exit.saved'));
       }
     }
-  }, [step, departureDate, readyCount, claims.length, localProfile, updateExitProfile, signature, hydrated, t]);
+  }, [
+    step,
+    departureDate,
+    readyCount,
+    claims.length,
+    localProfile,
+    updateExitProfile,
+    signature,
+    hydrated,
+    t,
+  ]);
 
   const handleCopyResult = () => {
     const text = claims
       .map(
         (c) =>
           `[${c.title}] - ${c.status}\n` +
-          `• 다음 행동: ${c.nextAction || "특이사항 없음"}\n` +
-          `• 필요 서류: ${c.documents?.join(", ") || "없음"}`
+          `• 다음 행동: ${c.nextAction || '특이사항 없음'}\n` +
+          `• 필요 서류: ${c.documents?.join(', ') || '없음'}`,
       )
-      .join("\n\n");
+      .join('\n\n');
 
     navigator.clipboard
       .writeText(text)
-      .then(() => toast.success(t("common.copied")))
-      .catch(() => toast.error(t("common.copyFailed")));
+      .then(() => toast.success(t('common.copied')))
+      .catch(() => toast.error(t('common.copyFailed')));
   };
 
   if (!hydrated) {
     return (
-      <AppShell title={t("exit.title")}>
-        <div className="py-20 text-center text-sm text-muted-foreground">
-          {t("home.loading")}
+      <AppShell title={t('exit.title')}>
+        <div className="py-20 text-center text-muted-foreground text-sm">
+          {t('home.loading')}
         </div>
       </AppShell>
     );
@@ -158,60 +170,66 @@ export default function ExitCheckPage() {
   // 1. 시작 화면
   if (step === -1) {
     return (
-      <AppShell title={t("exit.title")} subtitle={t("exit.subtitle")}>
+      <AppShell title={t('exit.title')} subtitle={t('exit.subtitle')}>
         <div className="space-y-4">
           {/* 배너 카드 */}
-          <div className="rounded-3xl bg-gradient-to-br from-primary via-[#1D4A88] to-primary p-6 text-primary-foreground shadow-xl shadow-primary/20">
-            <div className="flex items-center gap-2 text-xs font-semibold opacity-90">
+          <div className="rounded-3xl bg-gradient-to-br from-primary via-[#1D4A88] to-primary p-6 text-primary-foreground shadow-primary/20 shadow-xl">
+            <div className="flex items-center gap-2 font-semibold text-xs opacity-90">
               <Plane className="size-4" />
-              <span>{t("landing.f3.when")}</span>
+              <span>{t('landing.f3.when')}</span>
             </div>
-            <h2 className="mt-2 text-2xl font-bold tracking-tight">
-              {t("exit.title")}
+            <h2 className="mt-2 font-bold text-2xl tracking-tight">
+              {t('exit.title')}
             </h2>
-            <p className="mt-1 text-sm text-primary-foreground/80">
-              {t("exit.subtitle")}
+            <p className="mt-1 text-primary-foreground/80 text-sm">
+              {t('exit.subtitle')}
             </p>
 
-            <div className="mt-4 flex flex-wrap gap-2 pt-2 border-t border-white/10 text-xs">
+            <div className="mt-4 flex flex-wrap gap-2 border-white/10 border-t pt-2 text-xs">
               <span className="rounded-xl bg-white/15 px-3 py-1.5 backdrop-blur">
                 {departureDate
-                  ? `${t("profile.exitDate")}: ${formatKDate(departureDate)}`
-                  : t("home.exitNone")}
+                  ? `${t('profile.exitDate')}: ${formatKDate(departureDate)}`
+                  : t('home.exitNone')}
               </span>
               <span className="rounded-xl bg-white/15 px-3 py-1.5 backdrop-blur">
                 {totalMonths !== null
-                  ? `${t("home.monthsRecorded", { n: totalMonths })}`
-                  : t("common.unknownValue")}
+                  ? `${t('home.monthsRecorded', { n: totalMonths })}`
+                  : t('common.unknownValue')}
               </span>
             </div>
           </div>
 
           {/* 주요 확인 대상 안내 카드 */}
-          <div className="rounded-3xl border border-border/80 bg-card p-5 shadow-sm space-y-3">
-            <h3 className="text-sm font-bold text-foreground">
-              {t("exit.checklist.title")}
+          <div className="space-y-3 rounded-3xl border border-border/80 bg-card p-5 shadow-sm">
+            <h3 className="font-bold text-foreground text-sm">
+              {t('exit.checklist.title')}
             </h3>
-            <div className="grid gap-2.5 text-xs text-muted-foreground">
+            <div className="grid gap-2.5 text-muted-foreground text-xs">
               <div className="flex items-start gap-2.5 rounded-2xl bg-muted/50 p-3">
-                <ShieldCheck className="size-4 shrink-0 text-primary mt-0.5" />
+                <ShieldCheck className="mt-0.5 size-4 shrink-0 text-primary" />
                 <div>
-                  <strong className="font-semibold text-foreground">{t("exit.check1.title")}</strong>
-                  <p className="mt-0.5">{t("exit.check1.desc")}</p>
+                  <strong className="font-semibold text-foreground">
+                    {t('exit.check1.title')}
+                  </strong>
+                  <p className="mt-0.5">{t('exit.check1.desc')}</p>
                 </div>
               </div>
               <div className="flex items-start gap-2.5 rounded-2xl bg-muted/50 p-3">
-                <Plane className="size-4 shrink-0 text-info mt-0.5" />
+                <Plane className="mt-0.5 size-4 shrink-0 text-info" />
                 <div>
-                  <strong className="font-semibold text-foreground">{t("exit.check2.title")}</strong>
-                  <p className="mt-0.5">{t("exit.check2.desc")}</p>
+                  <strong className="font-semibold text-foreground">
+                    {t('exit.check2.title')}
+                  </strong>
+                  <p className="mt-0.5">{t('exit.check2.desc')}</p>
                 </div>
               </div>
               <div className="flex items-start gap-2.5 rounded-2xl bg-muted/50 p-3">
-                <Wallet className="size-4 shrink-0 text-signal mt-0.5" />
+                <Wallet className="mt-0.5 size-4 shrink-0 text-signal" />
                 <div>
-                  <strong className="font-semibold text-foreground">{t("exit.check3.title")}</strong>
-                  <p className="mt-0.5">{t("exit.check3.desc")}</p>
+                  <strong className="font-semibold text-foreground">
+                    {t('exit.check3.title')}
+                  </strong>
+                  <p className="mt-0.5">{t('exit.check3.desc')}</p>
                 </div>
               </div>
             </div>
@@ -220,9 +238,9 @@ export default function ExitCheckPage() {
           <Button
             onClick={() => setStep(0)}
             size="lg"
-            className="w-full rounded-2xl text-base font-bold shadow-lg shadow-primary/25"
+            className="w-full rounded-2xl font-bold text-base shadow-lg shadow-primary/25"
           >
-            {t("exit.step.start")}
+            {t('exit.step.start')}
             <ArrowRight className="ml-2 size-5" />
           </Button>
         </div>
@@ -232,19 +250,19 @@ export default function ExitCheckPage() {
 
   // 2. 단계별 마법사 (0 ~ 3)
   return (
-    <AppShell title={t("exit.title")}>
+    <AppShell title={t('exit.title')}>
       <div className="space-y-5">
         {/* 진행 바 */}
         <div className="space-y-2">
-          <div className="flex items-center justify-between text-xs text-muted-foreground">
+          <div className="flex items-center justify-between text-muted-foreground text-xs">
             <span>
-              {t("common.step")} {step + 1} / {STEP_TOTAL}
+              {t('common.step')} {step + 1} / {STEP_TOTAL}
             </span>
             <span className="font-semibold text-primary">
-              {step === 0 && t("exit.step.info")}
-              {step === 1 && t("exit.step.insurance")}
-              {step === 2 && t("exit.step.pension")}
-              {step === 3 && t("exit.step.result")}
+              {step === 0 && t('exit.step.info')}
+              {step === 1 && t('exit.step.insurance')}
+              {step === 2 && t('exit.step.pension')}
+              {step === 3 && t('exit.step.result')}
             </span>
           </div>
           <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted">
@@ -258,37 +276,52 @@ export default function ExitCheckPage() {
         {/* 0단계: 기본 체류 및 근무 정보 확인 */}
         {step === 0 && (
           <div className="space-y-4">
-            <div className="rounded-3xl border border-border/80 bg-card p-5 shadow-sm space-y-4">
-              <h2 className="text-base font-bold text-foreground">
-                {t("exit.step0.header")}
+            <div className="space-y-4 rounded-3xl border border-border/80 bg-card p-5 shadow-sm">
+              <h2 className="font-bold text-base text-foreground">
+                {t('exit.step0.header')}
               </h2>
-              <p className="text-xs text-muted-foreground">
-                {t("exit.step0.desc")}
+              <p className="text-muted-foreground text-xs">
+                {t('exit.step0.desc')}
               </p>
 
               <div className="space-y-2.5 text-xs">
                 <div className="flex items-center justify-between rounded-2xl bg-muted/40 p-3">
-                  <span className="text-muted-foreground">{t("profile.nationality")} / {t("profile.visa")}</span>
+                  <span className="text-muted-foreground">
+                    {t('profile.nationality')} / {t('profile.visa')}
+                  </span>
                   <span className="font-bold text-foreground">
-                    {state.profile?.nationality || t("common.unknown")} · {state.profile?.visa || t("common.unknown")}
+                    {state.profile?.nationality || t('common.unknown')} ·{' '}
+                    {state.profile?.visa || t('common.unknown')}
                   </span>
                 </div>
                 <div className="flex items-center justify-between rounded-2xl bg-muted/40 p-3">
-                  <span className="text-muted-foreground">{t("profile.workStart")}</span>
+                  <span className="text-muted-foreground">
+                    {t('profile.workStart')}
+                  </span>
                   <span className="font-bold text-foreground">
-                    {employment?.workStartDate?.value ? formatKDate(employment.workStartDate.value) : t("common.unknown")}
+                    {employment?.workStartDate?.value
+                      ? formatKDate(employment.workStartDate.value)
+                      : t('common.unknown')}
                   </span>
                 </div>
                 <div className="flex items-center justify-between rounded-2xl bg-muted/40 p-3">
-                  <span className="text-muted-foreground">{t("profile.exitDate")}</span>
+                  <span className="text-muted-foreground">
+                    {t('profile.exitDate')}
+                  </span>
                   <span className="font-bold text-foreground">
-                    {departureDate ? formatKDate(departureDate) : t("common.unknown")}
+                    {departureDate
+                      ? formatKDate(departureDate)
+                      : t('common.unknown')}
                   </span>
                 </div>
                 <div className="flex items-center justify-between rounded-2xl bg-primary/10 p-3 text-primary">
-                  <span className="font-semibold">{t("exit.step0.totalWorkPeriod")}</span>
+                  <span className="font-semibold">
+                    {t('exit.step0.totalWorkPeriod')}
+                  </span>
                   <span className="font-extrabold">
-                    {totalMonths !== null ? t("home.monthsRecorded", { n: totalMonths }) : t("common.unknownValue")}
+                    {totalMonths !== null
+                      ? t('home.monthsRecorded', { n: totalMonths })
+                      : t('common.unknownValue')}
                   </span>
                 </div>
               </div>
@@ -299,91 +332,125 @@ export default function ExitCheckPage() {
         {/* 1단계: 출국만기보험 & 귀국비용보험 확인 */}
         {step === 1 && (
           <div className="space-y-4">
-            <div className="rounded-3xl border border-border/80 bg-card p-5 shadow-sm space-y-4">
-              <h2 className="text-base font-bold text-foreground">
-                {t("exit.step.insurance")}
+            <div className="space-y-4 rounded-3xl border border-border/80 bg-card p-5 shadow-sm">
+              <h2 className="font-bold text-base text-foreground">
+                {t('exit.step.insurance')}
               </h2>
 
               {/* Q1: 출국만기보험 */}
-              <div className="space-y-2 pt-2 border-t border-border/60">
-                <p className="text-xs font-bold text-foreground">
-                  {t("exit.q1.title")}
+              <div className="space-y-2 border-border/60 border-t pt-2">
+                <p className="font-bold text-foreground text-xs">
+                  {t('exit.q1.title')}
                 </p>
                 <p className="text-[11px] text-muted-foreground">
-                  {t("exit.q.insuranceHint")}
+                  {t('exit.q.insuranceHint')}
                 </p>
                 <div className="grid grid-cols-2 gap-2 pt-1">
                   <Button
                     type="button"
-                    variant={localProfile.hasInsuranceRecord === true ? "default" : "outline"}
-                    className="rounded-xl text-xs font-semibold"
-                    onClick={() => handleUpdateExitProfile({ hasInsuranceRecord: true })}
+                    variant={
+                      localProfile.hasInsuranceRecord === true
+                        ? 'default'
+                        : 'outline'
+                    }
+                    className="rounded-xl font-semibold text-xs"
+                    onClick={() =>
+                      handleUpdateExitProfile({ hasInsuranceRecord: true })
+                    }
                   >
-                    {t("exit.q1.optYes")}
+                    {t('exit.q1.optYes')}
                   </Button>
                   <Button
                     type="button"
-                    variant={localProfile.hasInsuranceRecord === false ? "default" : "outline"}
-                    className="rounded-xl text-xs font-semibold"
-                    onClick={() => handleUpdateExitProfile({ hasInsuranceRecord: false })}
+                    variant={
+                      localProfile.hasInsuranceRecord === false
+                        ? 'default'
+                        : 'outline'
+                    }
+                    className="rounded-xl font-semibold text-xs"
+                    onClick={() =>
+                      handleUpdateExitProfile({ hasInsuranceRecord: false })
+                    }
                   >
-                    {t("exit.q1.optNo")}
+                    {t('exit.q1.optNo')}
                   </Button>
                 </div>
               </div>
 
               {/* Q2: 항공권 예매 여부 */}
-              <div className="space-y-2 pt-3 border-t border-border/60">
-                <p className="text-xs font-bold text-foreground">
-                  {t("exit.q2.title")}
+              <div className="space-y-2 border-border/60 border-t pt-3">
+                <p className="font-bold text-foreground text-xs">
+                  {t('exit.q2.title')}
                 </p>
                 <p className="text-[11px] text-muted-foreground">
-                  {t("exit.q.ticketHint")}
+                  {t('exit.q.ticketHint')}
                 </p>
                 <div className="grid grid-cols-2 gap-2 pt-1">
                   <Button
                     type="button"
-                    variant={localProfile.hasExitProof === true ? "default" : "outline"}
-                    className="rounded-xl text-xs font-semibold"
-                    onClick={() => handleUpdateExitProfile({ hasExitProof: true })}
+                    variant={
+                      localProfile.hasExitProof === true ? 'default' : 'outline'
+                    }
+                    className="rounded-xl font-semibold text-xs"
+                    onClick={() =>
+                      handleUpdateExitProfile({ hasExitProof: true })
+                    }
                   >
-                    {t("exit.q2.optYes")}
+                    {t('exit.q2.optYes')}
                   </Button>
                   <Button
                     type="button"
-                    variant={localProfile.hasExitProof === false ? "default" : "outline"}
-                    className="rounded-xl text-xs font-semibold"
-                    onClick={() => handleUpdateExitProfile({ hasExitProof: false })}
+                    variant={
+                      localProfile.hasExitProof === false
+                        ? 'default'
+                        : 'outline'
+                    }
+                    className="rounded-xl font-semibold text-xs"
+                    onClick={() =>
+                      handleUpdateExitProfile({ hasExitProof: false })
+                    }
                   >
-                    {t("exit.q2.optNo")}
+                    {t('exit.q2.optNo')}
                   </Button>
                 </div>
               </div>
 
               {/* Q3: 본인 계좌 */}
-              <div className="space-y-2 pt-3 border-t border-border/60">
-                <p className="text-xs font-bold text-foreground">
-                  {t("exit.q3.title")}
+              <div className="space-y-2 border-border/60 border-t pt-3">
+                <p className="font-bold text-foreground text-xs">
+                  {t('exit.q3.title')}
                 </p>
                 <p className="text-[11px] text-muted-foreground">
-                  {t("exit.q.accountHint")}
+                  {t('exit.q.accountHint')}
                 </p>
                 <div className="grid grid-cols-2 gap-2 pt-1">
                   <Button
                     type="button"
-                    variant={localProfile.hasOwnAccount === true ? "default" : "outline"}
-                    className="rounded-xl text-xs font-semibold"
-                    onClick={() => handleUpdateExitProfile({ hasOwnAccount: true })}
+                    variant={
+                      localProfile.hasOwnAccount === true
+                        ? 'default'
+                        : 'outline'
+                    }
+                    className="rounded-xl font-semibold text-xs"
+                    onClick={() =>
+                      handleUpdateExitProfile({ hasOwnAccount: true })
+                    }
                   >
-                    {t("exit.q3.optYes")}
+                    {t('exit.q3.optYes')}
                   </Button>
                   <Button
                     type="button"
-                    variant={localProfile.hasOwnAccount === false ? "default" : "outline"}
-                    className="rounded-xl text-xs font-semibold"
-                    onClick={() => handleUpdateExitProfile({ hasOwnAccount: false })}
+                    variant={
+                      localProfile.hasOwnAccount === false
+                        ? 'default'
+                        : 'outline'
+                    }
+                    className="rounded-xl font-semibold text-xs"
+                    onClick={() =>
+                      handleUpdateExitProfile({ hasOwnAccount: false })
+                    }
                   >
-                    {t("exit.q3.optNo")}
+                    {t('exit.q3.optNo')}
                   </Button>
                 </div>
               </div>
@@ -394,34 +461,46 @@ export default function ExitCheckPage() {
         {/* 2단계: 국민연금 반환일시금 확인 */}
         {step === 2 && (
           <div className="space-y-4">
-            <div className="rounded-3xl border border-border/80 bg-card p-5 shadow-sm space-y-4">
-              <h2 className="text-base font-bold text-foreground">
-                {t("exit.step.pension")}
+            <div className="space-y-4 rounded-3xl border border-border/80 bg-card p-5 shadow-sm">
+              <h2 className="font-bold text-base text-foreground">
+                {t('exit.step.pension')}
               </h2>
 
-              <div className="space-y-2 pt-2 border-t border-border/60">
-                <p className="text-xs font-bold text-foreground">
-                  {t("exit.pension.qTitle")}
+              <div className="space-y-2 border-border/60 border-t pt-2">
+                <p className="font-bold text-foreground text-xs">
+                  {t('exit.pension.qTitle')}
                 </p>
                 <p className="text-[11px] text-muted-foreground">
-                  {t("exit.q.pensionHint")}
+                  {t('exit.q.pensionHint')}
                 </p>
                 <div className="grid grid-cols-2 gap-2 pt-2">
                   <Button
                     type="button"
-                    variant={localProfile.pensionDeducted === true ? "default" : "outline"}
-                    className="rounded-xl text-xs font-semibold"
-                    onClick={() => handleUpdateExitProfile({ pensionDeducted: true })}
+                    variant={
+                      localProfile.pensionDeducted === true
+                        ? 'default'
+                        : 'outline'
+                    }
+                    className="rounded-xl font-semibold text-xs"
+                    onClick={() =>
+                      handleUpdateExitProfile({ pensionDeducted: true })
+                    }
                   >
-                    {t("exit.pension.optYes")}
+                    {t('exit.pension.optYes')}
                   </Button>
                   <Button
                     type="button"
-                    variant={localProfile.pensionDeducted === false ? "default" : "outline"}
-                    className="rounded-xl text-xs font-semibold"
-                    onClick={() => handleUpdateExitProfile({ pensionDeducted: false })}
+                    variant={
+                      localProfile.pensionDeducted === false
+                        ? 'default'
+                        : 'outline'
+                    }
+                    className="rounded-xl font-semibold text-xs"
+                    onClick={() =>
+                      handleUpdateExitProfile({ pensionDeducted: false })
+                    }
                   >
-                    {t("exit.pension.optNo")}
+                    {t('exit.pension.optNo')}
                   </Button>
                 </div>
               </div>
@@ -433,17 +512,17 @@ export default function ExitCheckPage() {
         {step === 3 && (
           <div className="space-y-4">
             {/* 결과 요약 카드 */}
-            <div className="rounded-3xl bg-card border border-border/80 p-5 shadow-sm space-y-3">
+            <div className="space-y-3 rounded-3xl border border-border/80 bg-card p-5 shadow-sm">
               <div className="flex items-center justify-between">
-                <h2 className="text-base font-bold text-foreground">
-                  {t("exit.resultHeading")}
+                <h2 className="font-bold text-base text-foreground">
+                  {t('exit.resultHeading')}
                 </h2>
-                <span className="rounded-xl bg-signal/15 px-2.5 py-1 text-xs font-bold text-signal">
-                  {t("exit.readyCount", { n: readyCount })}
+                <span className="rounded-xl bg-signal/15 px-2.5 py-1 font-bold text-signal text-xs">
+                  {t('exit.readyCount', { n: readyCount })}
                 </span>
               </div>
-              <p className="text-xs text-muted-foreground">
-                {t("exit.resultLead")}
+              <p className="text-muted-foreground text-xs">
+                {t('exit.resultLead')}
               </p>
             </div>
 
@@ -451,15 +530,16 @@ export default function ExitCheckPage() {
             <div className="space-y-3">
               {claims.map((claim) => {
                 const isReady =
-                  claim.status === "적용 가능성 있음" || claim.status === "대상 후보";
+                  claim.status === '적용 가능성 있음' ||
+                  claim.status === '대상 후보';
                 return (
                   <div
                     key={claim.id}
-                    className="rounded-3xl border border-border/80 bg-card p-5 shadow-sm space-y-3"
+                    className="space-y-3 rounded-3xl border border-border/80 bg-card p-5 shadow-sm"
                   >
                     <div className="flex items-start justify-between gap-2">
                       <div className="min-w-0">
-                        <h3 className="text-sm font-bold text-foreground">
+                        <h3 className="font-bold text-foreground text-sm">
                           {claim.title}
                         </h3>
                         <div className="mt-1 flex items-center gap-1.5 text-xs">
@@ -480,10 +560,12 @@ export default function ExitCheckPage() {
 
                     {/* 확인된 사실 */}
                     {claim.confirmed.length > 0 && (
-                      <div className="rounded-2xl bg-muted/40 p-3 text-xs space-y-1">
-                        <span className="font-semibold text-foreground">확인 정보:</span>
-                        {claim.confirmed.map((item, idx) => (
-                          <p key={idx} className="text-muted-foreground">
+                      <div className="space-y-1 rounded-2xl bg-muted/40 p-3 text-xs">
+                        <span className="font-semibold text-foreground">
+                          확인 정보:
+                        </span>
+                        {claim.confirmed.map((item) => (
+                          <p key={item} className="text-muted-foreground">
                             • {item}
                           </p>
                         ))}
@@ -492,11 +574,11 @@ export default function ExitCheckPage() {
 
                     {/* 다음 행동 */}
                     {claim.nextAction && (
-                      <div className="rounded-2xl bg-primary/5 p-3 text-xs space-y-1 border border-primary/15">
+                      <div className="space-y-1 rounded-2xl border border-primary/15 bg-primary/5 p-3 text-xs">
                         <span className="font-bold text-primary">
-                          {t("exit.nextAction")}:
+                          {t('exit.nextAction')}:
                         </span>
-                        <p className="text-foreground font-medium">
+                        <p className="font-medium text-foreground">
                           {claim.nextAction}
                         </p>
                       </div>
@@ -504,15 +586,15 @@ export default function ExitCheckPage() {
 
                     {/* 필요 서류 */}
                     {claim.documents && claim.documents.length > 0 && (
-                      <div className="text-xs space-y-1 pt-1">
+                      <div className="space-y-1 pt-1 text-xs">
                         <span className="font-semibold text-muted-foreground">
-                          {t("exit.docsRequired")}:
+                          {t('exit.docsRequired')}:
                         </span>
                         <div className="flex flex-wrap gap-1.5 pt-0.5">
-                          {claim.documents.map((doc, idx) => (
+                          {claim.documents.map((doc) => (
                             <span
-                              key={idx}
-                              className="rounded-lg bg-secondary px-2 py-1 text-[11px] font-medium text-secondary-foreground"
+                              key={doc}
+                              className="rounded-lg bg-secondary px-2 py-1 font-medium text-[11px] text-secondary-foreground"
                             >
                               {doc}
                             </span>
@@ -530,10 +612,10 @@ export default function ExitCheckPage() {
               <Button
                 variant="outline"
                 onClick={handleCopyResult}
-                className="flex-1 rounded-2xl text-xs font-semibold"
+                className="flex-1 rounded-2xl font-semibold text-xs"
               >
                 <Clipboard className="mr-1.5 size-4" />
-                {t("common.copy")}
+                {t('common.copy')}
               </Button>
               <Button
                 variant="outline"
@@ -541,10 +623,10 @@ export default function ExitCheckPage() {
                   savedRef.current = false;
                   setStep(0);
                 }}
-                className="rounded-2xl text-xs font-semibold"
+                className="rounded-2xl font-semibold text-xs"
               >
                 <RotateCcw className="mr-1.5 size-4" />
-                {t("common.again")}
+                {t('common.again')}
               </Button>
             </div>
           </div>
@@ -557,18 +639,18 @@ export default function ExitCheckPage() {
               type="button"
               variant="outline"
               onClick={() => setStep((s) => s - 1)}
-              className="rounded-2xl text-xs font-semibold"
+              className="rounded-2xl font-semibold text-xs"
             >
               <ArrowLeft className="mr-1.5 size-4" />
-              {t("common.prev")}
+              {t('common.prev')}
             </Button>
             <Button
               type="button"
               disabled={!canGoNext}
               onClick={() => setStep((s) => s + 1)}
-              className="flex-1 rounded-2xl text-xs font-bold"
+              className="flex-1 rounded-2xl font-bold text-xs"
             >
-              {t("common.next")}
+              {t('common.next')}
               <ArrowRight className="ml-1.5 size-4" />
             </Button>
           </div>
