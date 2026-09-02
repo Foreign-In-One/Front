@@ -2,13 +2,25 @@
 
 import {
   createContext,
+  type ReactNode,
   useCallback,
   useContext,
   useEffect,
   useMemo,
   useState,
-  type ReactNode,
 } from "react";
+import {
+  currentUserId,
+  latestOf,
+  localResultRepository,
+} from "@/lib/paycycle/repository";
+import type {
+  NewResult,
+  ResultKind,
+  SavedResult,
+} from "@/lib/paycycle/results";
+import { profileSignature } from "@/lib/paycycle/results";
+import { buildSampleState } from "@/lib/paycycle/sample";
 import type {
   CalendarEvent,
   EmploymentProfile,
@@ -19,10 +31,6 @@ import type {
   UserProfile,
 } from "@/lib/paycycle/types";
 import { EMPTY_DATE } from "@/lib/paycycle/types";
-import { buildSampleState } from "@/lib/paycycle/sample";
-import type { NewResult, ResultKind, SavedResult } from "@/lib/paycycle/results";
-import { profileSignature } from "@/lib/paycycle/results";
-import { currentUserId, latestOf, localResultRepository } from "@/lib/paycycle/repository";
 import {
   getCalendarEventsApi,
   getPaychecksApi,
@@ -87,7 +95,9 @@ interface PayCycleContextValue {
   results: SavedResult[];
   saveResult: (record: NewResult) => Promise<SavedResult>;
   removeResult: (id: string) => Promise<void>;
-  latestResult: <K extends ResultKind>(kind: K) => Extract<SavedResult, { kind: K }> | undefined;
+  latestResult: <K extends ResultKind>(
+    kind: K,
+  ) => Extract<SavedResult, { kind: K }> | undefined;
   signature: string;
   isStale: (record: SavedResult) => boolean;
   refreshFromBackend: () => Promise<void>;
@@ -103,24 +113,33 @@ export function PayCycleProvider({ children }: { children: ReactNode }) {
 
   const refreshFromBackend = useCallback(async () => {
     try {
-      const [{ profile }, { events: backendEvents }, { paychecks: backendPaychecks }] =
-        await Promise.all([
-          getProfileApi(),
-          getCalendarEventsApi(),
-          getPaychecksApi(),
-        ]);
+      const [
+        { profile },
+        { events: backendEvents },
+        { paychecks: backendPaychecks },
+      ] = await Promise.all([
+        getProfileApi(),
+        getCalendarEventsApi(),
+        getPaychecksApi(),
+      ]);
 
       const todayIso = isoDate(new Date());
       const mappedEvents: CalendarEvent[] = (backendEvents || []).map((e) => {
         const datePart = e.startAt ? e.startAt.split("T")[0] : "";
         const timePart =
-          e.startAt && e.startAt.includes("T") ? e.startAt.split("T")[1]?.slice(0, 5) : "09:00";
+          e.startAt && e.startAt.includes("T")
+            ? e.startAt.split("T")[1]?.slice(0, 5)
+            : "09:00";
         const isFuture = datePart > todayIso;
 
         // 오늘 날짜보다 미래인 날짜의 PAYCHECK(COMPLETED) 이벤트는 완료가 아닌 급여 예정(PAYDAY)으로 노출
-        const eventType = isFuture && e.eventType === "PAYCHECK" ? "PAYDAY" : e.eventType;
+        const eventType =
+          isFuture && e.eventType === "PAYCHECK" ? "PAYDAY" : e.eventType;
         const isCompleted = isFuture ? false : e.status === "COMPLETED";
-        const monthNum = datePart && datePart.includes("-") ? Number(datePart.split("-")[1]) : 0;
+        const monthNum =
+          datePart && datePart.includes("-")
+            ? Number(datePart.split("-")[1])
+            : 0;
         const eventTitle =
           isFuture && e.eventType === "PAYCHECK"
             ? `${monthNum ? `${monthNum}월 ` : ""}급여 입금 예정`
@@ -132,7 +151,10 @@ export function PayCycleProvider({ children }: { children: ReactNode }) {
           type: eventType,
           date: datePart,
           time: timePart,
-          description: isFuture && e.eventType === "PAYCHECK" ? "계약상 정기 급여 입금 예정일" : e.description,
+          description:
+            isFuture && e.eventType === "PAYCHECK"
+              ? "계약상 정기 급여 입금 예정일"
+              : e.description,
           completed: isCompleted,
           auto: e.sourceType !== "USER",
         };
@@ -142,7 +164,9 @@ export function PayCycleProvider({ children }: { children: ReactNode }) {
         const isMatch = p.status === "NORMAL";
         const isEx = p.status === "EXPLANATION_REQUIRED";
         const workplaceName = profile.companyName || "한국정밀";
-        const dateStr = p.paymentDate ? p.paymentDate.split("T")[0] : p.expectedPaymentDate;
+        const dateStr = p.paymentDate
+          ? p.paymentDate.split("T")[0]
+          : p.expectedPaymentDate;
 
         return {
           id: `be-pay-${p.paycheckId}`,
@@ -204,7 +228,11 @@ export function PayCycleProvider({ children }: { children: ReactNode }) {
             },
           },
           analysis: {
-            overallStatus: isMatch ? "MATCH" : isEx ? "EXPLANATION_REQUIRED" : "INSUFFICIENT_DATA",
+            overallStatus: isMatch
+              ? "MATCH"
+              : isEx
+                ? "EXPLANATION_REQUIRED"
+                : "INSUFFICIENT_DATA",
             headline: p.analysisSummary || `${p.payPeriod} 급여 분석 결과`,
             detail: p.nextAction || "",
             steps: [
@@ -231,18 +259,25 @@ export function PayCycleProvider({ children }: { children: ReactNode }) {
             findings: [
               {
                 id: "net",
-                status: isMatch ? "MATCH" : isEx ? "EXPLANATION_REQUIRED" : "INSUFFICIENT_DATA",
+                status: isMatch
+                  ? "MATCH"
+                  : isEx
+                    ? "EXPLANATION_REQUIRED"
+                    : "INSUFFICIENT_DATA",
                 title: isMatch
                   ? "계약서, 명세서, 실입금액 정상 일치"
                   : `실제 입금액과 명세서 간 ${Math.abs(
-                      p.differenceAmount || 0
+                      p.differenceAmount || 0,
                     ).toLocaleString()}원 차액 발생`,
                 fact: p.analysisSummary || "",
                 standard: "근로기준법 제43조 (임금 지급의 원칙)",
                 limitation: "",
                 nextActions: p.nextAction ? [p.nextAction] : [],
                 comparison: isMatch ? "MATCH" : "EXPLANATION_REQUIRED",
-                left: { label: "임금명세서 실지급액", amount: p.payslipAmount || 0 },
+                left: {
+                  label: "임금명세서 실지급액",
+                  amount: p.payslipAmount || 0,
+                },
                 right: { label: "통장 실입금액", amount: p.actualAmount || 0 },
                 difference: p.differenceAmount || 0,
                 requiredEvidence: ["임금명세서 사본", "은행 통장 거래내역서"],
@@ -276,10 +311,16 @@ export function PayCycleProvider({ children }: { children: ReactNode }) {
 
       setState((prev) => {
         const prevRecordsMap = new Map(prev.payRecords.map((r) => [r.id, r]));
-        const prevRecordsByPeriod = new Map(prev.payRecords.map((r) => [r.period, r]));
-        const existingRecordKeys = new Set(mappedRecords.map((r) => r.period || r.id));
+        const prevRecordsByPeriod = new Map(
+          prev.payRecords.map((r) => [r.period, r]),
+        );
+        const existingRecordKeys = new Set(
+          mappedRecords.map((r) => r.period || r.id),
+        );
         const preservedRecords = mappedRecords.map((r) => {
-          const local = prevRecordsMap.get(r.id) || (r.period ? prevRecordsByPeriod.get(r.period) : undefined);
+          const local =
+            prevRecordsMap.get(r.id) ||
+            (r.period ? prevRecordsByPeriod.get(r.period) : undefined);
           return local
             ? {
                 ...r,
@@ -291,9 +332,7 @@ export function PayCycleProvider({ children }: { children: ReactNode }) {
         const mergedRecords = [
           ...preservedRecords,
           ...prev.payRecords.filter(
-            (r) =>
-              !existingRecordKeys.has(r.period || r.id) &&
-              r.period !== "2026-09"
+            (r) => !existingRecordKeys.has(r.period || r.id),
           ),
         ];
 
@@ -301,39 +340,53 @@ export function PayCycleProvider({ children }: { children: ReactNode }) {
         const existingEventIds = new Set(mappedEvents.map((e) => e.id));
         const preservedEvents = mappedEvents.map((e) => {
           const local = prevEventsMap.get(e.id);
-          return local ? { ...e, completed: local.completed ?? e.completed } : e;
+          return local
+            ? { ...e, completed: local.completed ?? e.completed }
+            : e;
         });
         const mergedEvents = [
           ...preservedEvents,
           ...prev.events.filter(
             (e) =>
               !existingEventIds.has(e.id) &&
-              !(e.type === "PAYCHECK" && e.date.startsWith("2026-09"))
+              !(e.type === "PAYCHECK" && e.date.startsWith("2026-09")),
           ),
         ];
 
         return {
           ...prev,
           events: mergedEvents.length > 0 ? mergedEvents : prev.events,
-          payRecords: mergedRecords.length > 0 ? mergedRecords : prev.payRecords,
+          payRecords:
+            mergedRecords.length > 0 ? mergedRecords : prev.payRecords,
           profile: profile?.name
             ? {
                 nickname: profile.name,
                 nationality: profile.nationality,
                 visa: profile.visaType,
-                language: (profile.language || prev.profile?.language || "ko") as any,
+                language: (profile.language ||
+                  prev.profile?.language ||
+                  "ko") as any,
               }
             : prev.profile,
           employment: profile?.companyName
             ? {
                 status: (profile.employmentStatus as any) || "EMPLOYED",
-                entryDate: { value: profile.entryDate ?? "", unknown: !profile.entryDate },
-                workStartDate: { value: profile.workStartDate ?? "", unknown: !profile.workStartDate },
+                entryDate: {
+                  value: profile.entryDate ?? "",
+                  unknown: !profile.entryDate,
+                },
+                workStartDate: {
+                  value: profile.workStartDate ?? "",
+                  unknown: !profile.workStartDate,
+                },
                 currentWorkplaceStartDate: {
                   value: profile.workStartDate ?? "",
                   unknown: !profile.workStartDate,
                 },
-                exitDate: { value: profile.expectedExitDate ?? "", unknown: !profile.expectedExitDate },
+                exitDate: {
+                  value: profile.expectedExitDate ?? "",
+                  unknown: !profile.expectedExitDate,
+                },
                 payDay: profile.payday ?? 25,
                 workplace: profile.companyName ?? "",
                 previousWorkplace: "",
@@ -355,7 +408,9 @@ export function PayCycleProvider({ children }: { children: ReactNode }) {
         setState((prev) => ({
           ...prev,
           ...parsed,
-          payRecords: parsed.payRecords?.length ? parsed.payRecords : prev.payRecords,
+          payRecords: parsed.payRecords?.length
+            ? parsed.payRecords
+            : prev.payRecords,
           events: parsed.events?.length ? parsed.events : prev.events,
         }));
       }
@@ -389,17 +444,25 @@ export function PayCycleProvider({ children }: { children: ReactNode }) {
     }
   }, [state, hydrated]);
 
-  const saveProfile = useCallback((profile: UserProfile, employment: EmploymentProfile) => {
-    setState((prev) => ({ ...prev, profile, employment, sampleMode: false }));
-    // Spring Boot 백엔드 API 저장 (PATCH /api/profile)
-    void updateProfileApi({
-      employmentStatus: employment.status,
-      companyName: employment.workplace,
-      payday: employment.payDay ?? 25,
-      expectedExitDate: employment.exitDate.value || null,
-      language: profile.language || "ko",
-    });
-  }, []);
+  const saveProfile = useCallback(
+    (profile: UserProfile, employment: EmploymentProfile) => {
+      setState((prev) => ({ ...prev, profile, employment, sampleMode: false }));
+      // Spring Boot 백엔드 API 저장 (PATCH /api/profile)
+      void updateProfileApi({
+        name: profile.nickname,
+        nationality: profile.nationality,
+        visaType: profile.visa,
+        entryDate: employment.entryDate.value || null,
+        employmentStatus: employment.status,
+        companyName: employment.workplace,
+        workStartDate: employment.workStartDate.value || null,
+        payday: employment.payDay ?? 25,
+        expectedExitDate: employment.exitDate.value || null,
+        language: profile.language || "ko",
+      });
+    },
+    [],
+  );
 
   const updateProfile = useCallback((patch: Partial<UserProfile>) => {
     setState((prev) => {
@@ -419,9 +482,13 @@ export function PayCycleProvider({ children }: { children: ReactNode }) {
 
   const upsertPayRecord = useCallback((record: PayRecord) => {
     setState((prev) => {
-      const exists = prev.payRecords.some((r) => r.id === record.id || r.period === record.period);
+      const exists = prev.payRecords.some(
+        (r) => r.id === record.id || r.period === record.period,
+      );
       const nextRecords = exists
-        ? prev.payRecords.map((r) => (r.id === record.id || r.period === record.period ? record : r))
+        ? prev.payRecords.map((r) =>
+            r.id === record.id || r.period === record.period ? record : r,
+          )
         : [record, ...prev.payRecords];
       return { ...prev, payRecords: nextRecords };
     });
@@ -434,12 +501,14 @@ export function PayCycleProvider({ children }: { children: ReactNode }) {
           e.date === event.date &&
           e.type === event.type &&
           e.title === event.title &&
-          (e.time || "") === (event.time || "")
+          (e.time || "") === (event.time || ""),
       );
       if (exists) {
         return {
           ...prev,
-          events: prev.events.map((e) => (e.id === exists.id ? { ...e, ...event } : e)),
+          events: prev.events.map((e) =>
+            e.id === exists.id ? { ...e, ...event } : e,
+          ),
         };
       }
       const newEvt: CalendarEvent = { ...event, id: `evt-${Date.now()}` };
@@ -457,16 +526,24 @@ export function PayCycleProvider({ children }: { children: ReactNode }) {
   const toggleEvent = useCallback((id: string) => {
     setState((prev) => ({
       ...prev,
-      events: prev.events.map((e) => (e.id === id ? { ...e, completed: !e.completed } : e)),
+      events: prev.events.map((e) =>
+        e.id === id ? { ...e, completed: !e.completed } : e,
+      ),
     }));
   }, []);
 
   const updateTaxProfile = useCallback((patch: Partial<TaxProfile>) => {
-    setState((prev) => ({ ...prev, taxProfile: { ...prev.taxProfile, ...patch } }));
+    setState((prev) => ({
+      ...prev,
+      taxProfile: { ...prev.taxProfile, ...patch },
+    }));
   }, []);
 
   const updateExitProfile = useCallback((patch: Partial<ExitProfile>) => {
-    setState((prev) => ({ ...prev, exitProfile: { ...prev.exitProfile, ...patch } }));
+    setState((prev) => ({
+      ...prev,
+      exitProfile: { ...prev.exitProfile, ...patch },
+    }));
   }, []);
 
   const loadSample = useCallback(() => {
@@ -478,7 +555,11 @@ export function PayCycleProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const yearlyPay = useMemo(() => {
-    return state.payRecords.reduce((acc, r) => acc + (r.documents.statement?.fields?.netPay ?? r.paidAmount ?? 0), 0);
+    return state.payRecords.reduce(
+      (acc, r) =>
+        acc + (r.documents.statement?.fields?.netPay ?? r.paidAmount ?? 0),
+      0,
+    );
   }, [state.payRecords]);
 
   const monthsRecorded = state.payRecords.length;
@@ -500,7 +581,7 @@ export function PayCycleProvider({ children }: { children: ReactNode }) {
     <K extends ResultKind>(kind: K) => {
       return latestOf(results, kind);
     },
-    [results]
+    [results],
   );
 
   const signature = useMemo(() => {
@@ -511,7 +592,7 @@ export function PayCycleProvider({ children }: { children: ReactNode }) {
     (record: SavedResult) => {
       return record.profileSignature !== signature;
     },
-    [signature]
+    [signature],
   );
 
   const value = useMemo(
@@ -559,7 +640,6 @@ export function PayCycleProvider({ children }: { children: ReactNode }) {
       resetAll,
       yearlyPay,
       monthsRecorded,
-      totalMonths,
       currentPeriodRecord,
       results,
       saveResult,
@@ -568,10 +648,14 @@ export function PayCycleProvider({ children }: { children: ReactNode }) {
       signature,
       isStale,
       refreshFromBackend,
-    ]
+    ],
   );
 
-  return <PayCycleContext.Provider value={value}>{children}</PayCycleContext.Provider>;
+  return (
+    <PayCycleContext.Provider value={value}>
+      {children}
+    </PayCycleContext.Provider>
+  );
 }
 
 export function usePayCycle() {
