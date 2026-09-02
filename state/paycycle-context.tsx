@@ -29,6 +29,7 @@ import {
   getProfileApi,
   updateProfileApi,
 } from "@/services/api";
+import { isoDate } from "@/lib/paycycle/format";
 
 const STORAGE_KEY = "paycycle-ai-state-v2";
 
@@ -109,18 +110,30 @@ export function PayCycleProvider({ children }: { children: ReactNode }) {
           getPaychecksApi(),
         ]);
 
+      const todayIso = isoDate(new Date());
       const mappedEvents: CalendarEvent[] = (backendEvents || []).map((e) => {
         const datePart = e.startAt ? e.startAt.split("T")[0] : "";
         const timePart =
           e.startAt && e.startAt.includes("T") ? e.startAt.split("T")[1]?.slice(0, 5) : "09:00";
+        const isFuture = datePart > todayIso;
+
+        // 오늘 날짜보다 미래인 날짜의 PAYCHECK(COMPLETED) 이벤트는 완료가 아닌 급여 예정(PAYDAY)으로 노출
+        const eventType = isFuture && e.eventType === "PAYCHECK" ? "PAYDAY" : e.eventType;
+        const isCompleted = isFuture ? false : e.status === "COMPLETED";
+        const monthNum = datePart && datePart.includes("-") ? Number(datePart.split("-")[1]) : 0;
+        const eventTitle =
+          isFuture && e.eventType === "PAYCHECK"
+            ? `${monthNum ? `${monthNum}월 ` : ""}급여 입금 예정`
+            : e.title;
+
         return {
           id: `be-${e.eventId}`,
-          title: e.title,
-          type: e.eventType,
+          title: eventTitle,
+          type: eventType,
           date: datePart,
           time: timePart,
-          description: e.description,
-          completed: e.status === "COMPLETED",
+          description: isFuture && e.eventType === "PAYCHECK" ? "계약상 정기 급여 입금 예정일" : e.description,
+          completed: isCompleted,
           auto: e.sourceType !== "USER",
         };
       });

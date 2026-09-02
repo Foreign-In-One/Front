@@ -98,32 +98,60 @@ export default function CalendarPage() {
   const currentMonth = cursor.getMonth();
 
   const allEvents = useMemo(() => {
-    const list: CalendarEvent[] = [...state.events];
+    const list: CalendarEvent[] = [];
+    const todayIso = isoDate(new Date());
+    const userPayDay = state.employment?.payDay || 25;
 
+    // 1. 기존 이벤트 중 미래 날짜의 PAYCHECK(COMPLETED) 이벤트는 완료가 아닌 '급여 예정(PAYDAY, false)'으로 정규화
+    for (const evt of state.events) {
+      const isFuture = evt.date > todayIso;
+      if (isFuture && evt.type === "PAYCHECK") {
+        list.push({
+          ...evt,
+          type: "PAYDAY",
+          title: t("cal.sys.paydayTitle", { day: userPayDay }),
+          description: t("cal.sys.paydayDesc"),
+          completed: false,
+        });
+      } else {
+        list.push(evt);
+      }
+    }
+
+    // 2. 시스템 월급날 자동 이벤트 (해당 날짜에 이미 PAYDAY 이벤트가 없는 경우에만 추가하여 중복 방지)
     if (state.employment?.payDay) {
       const day = Math.min(state.employment.payDay, 28);
       const payIso = isoDate(new Date(currentYear, currentMonth, day));
-      list.push({
-        id: `sys-payday-${payIso}`,
-        title: t("cal.sys.paydayTitle", { day: state.employment.payDay }),
-        type: "PAYDAY",
-        date: payIso,
-        time: "09:00",
-        description: t("cal.sys.paydayDesc"),
-        sourceType: "PAYDAY",
-      });
+      const hasPayDayOnDate = list.some((e) => e.date === payIso && e.type === "PAYDAY");
+      if (!hasPayDayOnDate) {
+        list.push({
+          id: `sys-payday-${payIso}`,
+          title: t("cal.sys.paydayTitle", { day: state.employment.payDay }),
+          type: "PAYDAY",
+          date: payIso,
+          time: "09:00",
+          description: t("cal.sys.paydayDesc"),
+          sourceType: "PAYDAY",
+        });
+      }
     }
 
+    // 3. 예상 출국일 이벤트 (중복 방지)
     if (state.employment?.exitDate?.value && !state.employment.exitDate.unknown) {
-      list.push({
-        id: `sys-exit-${state.employment.exitDate.value}`,
-        title: t("cal.sys.exitTitle"),
-        type: "EXIT",
-        date: state.employment.exitDate.value,
-        time: "10:00",
-        description: t("cal.sys.exitDesc"),
-        sourceType: "EXIT",
-      });
+      const hasExitOnDate = list.some(
+        (e) => e.date === state.employment?.exitDate?.value && e.type === "EXIT"
+      );
+      if (!hasExitOnDate) {
+        list.push({
+          id: `sys-exit-${state.employment.exitDate.value}`,
+          title: t("cal.sys.exitTitle"),
+          type: "EXIT",
+          date: state.employment.exitDate.value,
+          time: "10:00",
+          description: t("cal.sys.exitDesc"),
+          sourceType: "EXIT",
+        });
+      }
     }
 
     return list;
