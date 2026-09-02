@@ -1,4 +1,4 @@
-'use client';
+"use client";
 
 import {
   createContext,
@@ -8,19 +8,19 @@ import {
   useEffect,
   useMemo,
   useState,
-} from 'react';
+} from "react";
 import {
   currentUserId,
   latestOf,
   localResultRepository,
-} from '@/lib/paycycle/repository';
+} from "@/lib/paycycle/repository";
 import type {
   NewResult,
   ResultKind,
   SavedResult,
-} from '@/lib/paycycle/results';
-import { profileSignature } from '@/lib/paycycle/results';
-import { buildSampleState } from '@/lib/paycycle/sample';
+} from "@/lib/paycycle/results";
+import { profileSignature } from "@/lib/paycycle/results";
+import { buildSampleState } from "@/lib/paycycle/sample";
 import type {
   CalendarEvent,
   EmploymentProfile,
@@ -29,26 +29,27 @@ import type {
   PayRecord,
   TaxProfile,
   UserProfile,
-} from '@/lib/paycycle/types';
-import { EMPTY_DATE } from '@/lib/paycycle/types';
+} from "@/lib/paycycle/types";
+import { EMPTY_DATE } from "@/lib/paycycle/types";
 import {
   getCalendarEventsApi,
   getPaychecksApi,
   getProfileApi,
   updateProfileApi,
-} from '@/services/api';
+} from "@/services/api";
+import { isoDate } from "@/lib/paycycle/format";
 
-const STORAGE_KEY = 'paycycle-ai-state-v2';
+const STORAGE_KEY = "paycycle-ai-state-v2";
 
 export const initialEmployment: EmploymentProfile = {
-  status: 'EMPLOYED',
+  status: "EMPLOYED",
   entryDate: EMPTY_DATE,
   workStartDate: EMPTY_DATE,
   currentWorkplaceStartDate: EMPTY_DATE,
   exitDate: EMPTY_DATE,
   payDay: null,
-  workplace: '',
-  previousWorkplace: '',
+  workplace: "",
+  previousWorkplace: "",
 };
 
 const initialState: PayCycleState = {
@@ -80,7 +81,7 @@ interface PayCycleContextValue {
   updateProfile: (patch: Partial<UserProfile>) => void;
   updateEmployment: (patch: Partial<EmploymentProfile>) => void;
   upsertPayRecord: (record: PayRecord) => void;
-  addEvent: (event: Omit<CalendarEvent, 'id'>) => void;
+  addEvent: (event: Omit<CalendarEvent, "id">) => void;
   removeEvent: (id: string) => void;
   toggleEvent: (id: string) => void;
   updateTaxProfile: (patch: Partial<TaxProfile>) => void;
@@ -107,7 +108,7 @@ const PayCycleContext = createContext<PayCycleContextValue | null>(null);
 export function PayCycleProvider({ children }: { children: ReactNode }) {
   const [state, setState] = useState<PayCycleState>(initialState);
   const [hydrated, setHydrated] = useState(false);
-  const [userId, setUserId] = useState('local-user');
+  const [userId, setUserId] = useState("local-user");
   const [results, setResults] = useState<SavedResult[]>([]);
 
   const refreshFromBackend = useCallback(async () => {
@@ -122,30 +123,49 @@ export function PayCycleProvider({ children }: { children: ReactNode }) {
         getPaychecksApi(),
       ]);
 
+      const todayIso = isoDate(new Date());
       const mappedEvents: CalendarEvent[] = (backendEvents || []).map((e) => {
-        const datePart = e.startAt ? e.startAt.split('T')[0] : '';
+        const datePart = e.startAt ? e.startAt.split("T")[0] : "";
         const timePart =
-          e.startAt && e.startAt.includes('T')
-            ? e.startAt.split('T')[1]?.slice(0, 5)
-            : '09:00';
+          e.startAt && e.startAt.includes("T")
+            ? e.startAt.split("T")[1]?.slice(0, 5)
+            : "09:00";
+        const isFuture = datePart > todayIso;
+
+        // 오늘 날짜보다 미래인 날짜의 PAYCHECK(COMPLETED) 이벤트는 완료가 아닌 급여 예정(PAYDAY)으로 노출
+        const eventType =
+          isFuture && e.eventType === "PAYCHECK" ? "PAYDAY" : e.eventType;
+        const isCompleted = isFuture ? false : e.status === "COMPLETED";
+        const monthNum =
+          datePart && datePart.includes("-")
+            ? Number(datePart.split("-")[1])
+            : 0;
+        const eventTitle =
+          isFuture && e.eventType === "PAYCHECK"
+            ? `${monthNum ? `${monthNum}월 ` : ""}급여 입금 예정`
+            : e.title;
+
         return {
           id: `be-${e.eventId}`,
-          title: e.title,
-          type: e.eventType,
+          title: eventTitle,
+          type: eventType,
           date: datePart,
           time: timePart,
-          description: e.description,
-          completed: e.status === 'COMPLETED',
-          auto: e.sourceType !== 'USER',
+          description:
+            isFuture && e.eventType === "PAYCHECK"
+              ? "계약상 정기 급여 입금 예정일"
+              : e.description,
+          completed: isCompleted,
+          auto: e.sourceType !== "USER",
         };
       });
 
       const mappedRecords: PayRecord[] = (backendPaychecks || []).map((p) => {
-        const isMatch = p.status === 'NORMAL';
-        const isEx = p.status === 'EXPLANATION_REQUIRED';
-        const workplaceName = profile.companyName || '한국정밀';
+        const isMatch = p.status === "NORMAL";
+        const isEx = p.status === "EXPLANATION_REQUIRED";
+        const workplaceName = profile.companyName || "한국정밀";
         const dateStr = p.paymentDate
-          ? p.paymentDate.split('T')[0]
+          ? p.paymentDate.split("T")[0]
           : p.expectedPaymentDate;
 
         return {
@@ -156,9 +176,9 @@ export function PayCycleProvider({ children }: { children: ReactNode }) {
           paidAmount: p.actualAmount,
           documents: {
             contract: {
-              kind: 'contract',
-              source: 'manual',
-              fileName: 'contract.pdf',
+              kind: "contract",
+              source: "manual",
+              fileName: "contract.pdf",
               fields: {
                 period: p.payPeriod,
                 basePay: p.contractAmount,
@@ -173,9 +193,9 @@ export function PayCycleProvider({ children }: { children: ReactNode }) {
               note: `계약 기본급 ${p.contractAmount?.toLocaleString()}원`,
             },
             statement: {
-              kind: 'statement',
-              source: 'manual',
-              fileName: 'payslip.pdf',
+              kind: "statement",
+              source: "manual",
+              fileName: "payslip.pdf",
               fields: {
                 period: p.payPeriod,
                 basePay: p.contractAmount,
@@ -190,9 +210,9 @@ export function PayCycleProvider({ children }: { children: ReactNode }) {
               note: `명세서 실지급액 ${p.payslipAmount?.toLocaleString()}원`,
             },
             deposit: {
-              kind: 'deposit',
-              source: 'manual',
-              fileName: 'deposit.png',
+              kind: "deposit",
+              source: "manual",
+              fileName: "deposit.png",
               fields: {
                 period: p.payPeriod,
                 basePay: null,
@@ -209,80 +229,80 @@ export function PayCycleProvider({ children }: { children: ReactNode }) {
           },
           analysis: {
             overallStatus: isMatch
-              ? 'MATCH'
+              ? "MATCH"
               : isEx
-                ? 'EXPLANATION_REQUIRED'
-                : 'INSUFFICIENT_DATA',
+                ? "EXPLANATION_REQUIRED"
+                : "INSUFFICIENT_DATA",
             headline: p.analysisSummary || `${p.payPeriod} 급여 분석 결과`,
-            detail: p.nextAction || '',
+            detail: p.nextAction || "",
             steps: [
               {
-                label: '근로계약서 확인',
+                label: "근로계약서 확인",
                 ok: true,
                 detail: `기본급 ${p.contractAmount?.toLocaleString()}원 대조`,
               },
               {
-                label: '임금명세서 판독',
+                label: "임금명세서 판독",
                 ok: true,
                 detail: `실지급액 ${p.payslipAmount?.toLocaleString()}원 대조`,
               },
               {
-                label: '실입금액 대조',
+                label: "실입금액 대조",
                 ok: isMatch,
                 detail: `통장 입금액 ${p.actualAmount?.toLocaleString()}원 (${
                   p.differenceAmount !== 0
                     ? `${p.differenceAmount?.toLocaleString()}원 차이`
-                    : '일치'
+                    : "일치"
                 })`,
               },
             ],
             findings: [
               {
-                id: 'net',
+                id: "net",
                 status: isMatch
-                  ? 'MATCH'
+                  ? "MATCH"
                   : isEx
-                    ? 'EXPLANATION_REQUIRED'
-                    : 'INSUFFICIENT_DATA',
+                    ? "EXPLANATION_REQUIRED"
+                    : "INSUFFICIENT_DATA",
                 title: isMatch
-                  ? '계약서, 명세서, 실입금액 정상 일치'
+                  ? "계약서, 명세서, 실입금액 정상 일치"
                   : `실제 입금액과 명세서 간 ${Math.abs(
                       p.differenceAmount || 0,
                     ).toLocaleString()}원 차액 발생`,
-                fact: p.analysisSummary || '',
-                standard: '근로기준법 제43조 (임금 지급의 원칙)',
-                limitation: '',
+                fact: p.analysisSummary || "",
+                standard: "근로기준법 제43조 (임금 지급의 원칙)",
+                limitation: "",
                 nextActions: p.nextAction ? [p.nextAction] : [],
-                comparison: isMatch ? 'MATCH' : 'EXPLANATION_REQUIRED',
+                comparison: isMatch ? "MATCH" : "EXPLANATION_REQUIRED",
                 left: {
-                  label: '임금명세서 실지급액',
+                  label: "임금명세서 실지급액",
                   amount: p.payslipAmount || 0,
                 },
-                right: { label: '통장 실입금액', amount: p.actualAmount || 0 },
+                right: { label: "통장 실입금액", amount: p.actualAmount || 0 },
                 difference: p.differenceAmount || 0,
-                requiredEvidence: ['임금명세서 사본', '은행 통장 거래내역서'],
-                sources: ['statement', 'deposit'],
+                requiredEvidence: ["임금명세서 사본", "은행 통장 거래내역서"],
+                sources: ["statement", "deposit"],
                 evidence: [],
               },
             ],
             rows: [
               {
-                item: '기본급',
+                item: "기본급",
                 contract: `${p.contractAmount?.toLocaleString()}원`,
                 statement: `${p.contractAmount?.toLocaleString()}원`,
-                deposit: '—',
+                deposit: "—",
                 result: `${p.contractAmount?.toLocaleString()}원 일치`,
-                status: 'MATCH',
+                status: "MATCH",
               },
               {
-                item: '실지급액',
-                contract: '—',
+                item: "실지급액",
+                contract: "—",
                 statement: `${p.payslipAmount?.toLocaleString()}원`,
                 deposit: `${p.actualAmount?.toLocaleString()}원`,
                 result: isMatch
-                  ? '정상 일치'
+                  ? "정상 일치"
                   : `${Math.abs(p.differenceAmount || 0).toLocaleString()}원 차이`,
-                status: isMatch ? 'MATCH' : 'EXPLANATION_REQUIRED',
+                status: isMatch ? "MATCH" : "EXPLANATION_REQUIRED",
               },
             ],
           },
@@ -326,7 +346,11 @@ export function PayCycleProvider({ children }: { children: ReactNode }) {
         });
         const mergedEvents = [
           ...preservedEvents,
-          ...prev.events.filter((e) => !existingEventIds.has(e.id)),
+          ...prev.events.filter(
+            (e) =>
+              !existingEventIds.has(e.id) &&
+              !(e.type === "PAYCHECK" && e.date.startsWith("2026-09")),
+          ),
         ];
 
         return {
@@ -341,31 +365,31 @@ export function PayCycleProvider({ children }: { children: ReactNode }) {
                 visa: profile.visaType,
                 language: (profile.language ||
                   prev.profile?.language ||
-                  'ko') as any,
+                  "ko") as any,
               }
             : prev.profile,
           employment: profile?.companyName
             ? {
-                status: (profile.employmentStatus as any) || 'EMPLOYED',
+                status: (profile.employmentStatus as any) || "EMPLOYED",
                 entryDate: {
-                  value: profile.entryDate ?? '',
+                  value: profile.entryDate ?? "",
                   unknown: !profile.entryDate,
                 },
                 workStartDate: {
-                  value: profile.workStartDate ?? '',
+                  value: profile.workStartDate ?? "",
                   unknown: !profile.workStartDate,
                 },
                 currentWorkplaceStartDate: {
-                  value: profile.workStartDate ?? '',
+                  value: profile.workStartDate ?? "",
                   unknown: !profile.workStartDate,
                 },
                 exitDate: {
-                  value: profile.expectedExitDate ?? '',
+                  value: profile.expectedExitDate ?? "",
                   unknown: !profile.expectedExitDate,
                 },
                 payDay: profile.payday ?? 25,
-                workplace: profile.companyName ?? '',
-                previousWorkplace: '',
+                workplace: profile.companyName ?? "",
+                previousWorkplace: "",
               }
             : prev.employment,
         };
@@ -400,7 +424,7 @@ export function PayCycleProvider({ children }: { children: ReactNode }) {
       try {
         await refreshFromBackend();
       } catch (err) {
-        console.warn('Backend refresh failed during init:', err);
+        console.warn("Backend refresh failed during init:", err);
       }
     }
 
@@ -434,7 +458,7 @@ export function PayCycleProvider({ children }: { children: ReactNode }) {
         workStartDate: employment.workStartDate.value || null,
         payday: employment.payDay ?? 25,
         expectedExitDate: employment.exitDate.value || null,
-        language: profile.language || 'ko',
+        language: profile.language || "ko",
       });
     },
     [],
@@ -470,14 +494,14 @@ export function PayCycleProvider({ children }: { children: ReactNode }) {
     });
   }, []);
 
-  const addEvent = useCallback((event: Omit<CalendarEvent, 'id'>) => {
+  const addEvent = useCallback((event: Omit<CalendarEvent, "id">) => {
     setState((prev) => {
       const exists = prev.events.find(
         (e) =>
           e.date === event.date &&
           e.type === event.type &&
           e.title === event.title &&
-          (e.time || '') === (event.time || ''),
+          (e.time || "") === (event.time || ""),
       );
       if (exists) {
         return {
@@ -637,7 +661,7 @@ export function PayCycleProvider({ children }: { children: ReactNode }) {
 export function usePayCycle() {
   const context = useContext(PayCycleContext);
   if (!context) {
-    throw new Error('usePayCycle must be used within a PayCycleProvider');
+    throw new Error("usePayCycle must be used within a PayCycleProvider");
   }
   return context;
 }

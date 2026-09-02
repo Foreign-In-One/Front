@@ -62,13 +62,30 @@ export async function readDocument(input: {
         documentId: docId,
         mock: uploadRes.isMock || ocrRes.isMock,
         fields,
-        candidateAmounts: ext.candidateAmounts || (ext.baseSalary || ext.netPay || ext.overtimeAllowance || ext.deduction || ext.totalPayment ? [
-          ...(ext.baseSalary ? [{ label: "기본급", amount: ext.baseSalary, targetField: "basePay" as const }] : []),
-          ...(ext.overtimeAllowance ? [{ label: "연장근로수당", amount: ext.overtimeAllowance, targetField: "allowances" as const }] : []),
-          ...(ext.totalPayment ? [{ label: "지급총액", amount: ext.totalPayment }] : []),
-          ...(ext.deduction ? [{ label: "공제총액", amount: ext.deduction, targetField: "deductions" as const }] : []),
-          ...(ext.netPay ? [{ label: "실지급액", amount: ext.netPay, targetField: "netPay" as const }] : []),
-        ] : undefined),
+        candidateAmounts: (ext.candidateAmounts && ext.candidateAmounts.length > 0)
+          ? ext.candidateAmounts.map((c) => {
+              let targetField = c.targetField;
+              if (!targetField) {
+                const norm = (c.label || "").trim().toLowerCase();
+                if (norm.includes("기본급") || norm.includes("base") || norm.includes("월급")) {
+                  targetField = "basePay";
+                } else if (norm.includes("실지급") || norm.includes("실수령") || norm.includes("차인지급") || norm.includes("net") || norm.includes("입금")) {
+                  targetField = "netPay";
+                } else if (norm.includes("수당") || norm.includes("연장") || norm.includes("식대")) {
+                  targetField = "allowances";
+                } else if (norm.includes("공제")) {
+                  targetField = "deductions";
+                }
+              }
+              return { ...c, targetField };
+            })
+          : (ext.baseSalary || ext.netPay || ext.overtimeAllowance || ext.deduction || ext.totalPayment ? [
+              ...(ext.baseSalary ? [{ label: "기본급", amount: ext.baseSalary, targetField: "basePay" as const }] : []),
+              ...(ext.overtimeAllowance ? [{ label: "연장근로수당", amount: ext.overtimeAllowance, targetField: "allowances" as const }] : []),
+              ...(ext.totalPayment ? [{ label: "지급총액", amount: ext.totalPayment }] : []),
+              ...(ext.deduction ? [{ label: "공제총액", amount: ext.deduction, targetField: "deductions" as const }] : []),
+              ...(ext.netPay ? [{ label: "실지급액", amount: ext.netPay, targetField: "netPay" as const }] : []),
+            ] : undefined),
         confidence: ocrRes.data.ocrStatus === "SUCCESS" || ocrRes.data.ocrStatus === "COMPLETED" ? "high" : "low",
         message: `${file.name} OCR 판독이 완료되었습니다.`,
       };

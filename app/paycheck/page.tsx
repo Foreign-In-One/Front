@@ -14,6 +14,7 @@ import {
   ShieldCheck,
   History,
   Eye,
+  AlertTriangle,
 } from "lucide-react";
 import { toast } from "sonner";
 import { AppShell } from "@/components/app-shell";
@@ -46,7 +47,16 @@ import type {
   PaycheckAnalysis,
   PayFinding,
 } from "@/lib/paycycle/types";
-import { formatKDate, monthLabel, periodOf, uid, won } from "@/lib/paycycle/format";
+import {
+  daysBetween,
+  formatKDate,
+  isoDate,
+  monthLabel,
+  payDayIso,
+  periodOf,
+  uid,
+  won,
+} from "@/lib/paycycle/format";
 import { readDocument } from "@/services/ocr";
 import {
   analyzePaycheckApi,
@@ -272,14 +282,59 @@ function defaultDoc(kind: DocKind, period: string): PayDocument {
   };
 }
 
+/** 사용자 급여일 기준, 오늘 날짜가 이번 달 급여일 이전이면 직전 완료 월(지난달)을 기본값으로 반환 */
+function getInitialPayPeriod(payDay: number = 25): string {
+  const today = new Date();
+  const currentYear = today.getFullYear();
+  const currentMonth = today.getMonth() + 1;
+  const currentDate = today.getDate();
+
+  let targetYear = currentYear;
+  let targetMonth = currentMonth;
+
+  if (currentDate < payDay) {
+    targetMonth -= 1;
+    if (targetMonth === 0) {
+      targetMonth = 12;
+      targetYear -= 1;
+    }
+  }
+  return `${targetYear}-${String(targetMonth).padStart(2, "0")}`;
+}
+
 export default function PayCheckPage() {
   const { state, hydrated, upsertPayRecord, saveResult, addEvent, refreshFromBackend } = usePayCycle();
   const { t, locale } = useT();
 
+  const userPayDay = state.employment?.payDay || 25;
+
   const [step, setStep] = useState<number>(-1);
-  const [period, setPeriod] = useState(() => periodOf(new Date()));
+  const [period, setPeriod] = useState(() => getInitialPayPeriod(25));
   const [editingKind, setEditingKind] = useState<DocKind | null>(null);
   const [activePaycheckId, setActivePaycheckId] = useState<number | string | undefined>(undefined);
+
+  // 프로필의 급여일(payday)이 로드되었을 때, 초기 상태(기본값)이면 사용자 실제 급여일에 맞춰 재조정
+  const hasUserChangedPeriodRef = useRef(false);
+  useEffect(() => {
+    if (!hasUserChangedPeriodRef.current && userPayDay) {
+      setPeriod(getInitialPayPeriod(userPayDay));
+    }
+  }, [userPayDay]);
+
+  // 선택한 월의 급여일이 오늘보다 미래인지(미도래/미입금 월인지) 판별
+  const targetPayDate = payDayIso(period, userPayDay);
+  const todayIso = isoDate(new Date());
+  const isBeforePayday = Boolean(targetPayDate && targetPayDate > todayIso);
+
+  // 급여일까지 남은 D-Day 계산
+  const dDayText = useMemo(() => {
+    if (!isBeforePayday || !targetPayDate) return "";
+    const [y, m, d] = targetPayDate.split("-").map(Number);
+    const targetDt = new Date(y, m - 1, d);
+    const diff = daysBetween(new Date(), targetDt);
+    if (diff <= 0) return "D-Day";
+    return `D-${diff}`;
+  }, [isBeforePayday, targetPayDate]);
 
   // 이전 기록 상세 보기 다이얼로그 모달 상태
   const [selectedRecord, setSelectedRecord] = useState<PayRecord | null>(null);
@@ -611,17 +666,44 @@ export default function PayCheckPage() {
 
   const applyCandidate = useCallback(
     (kind: DocKind, cand: CandidateAmountDto) => {
-      if (!cand.targetField) return;
-      const targetField = cand.targetField;
-      updateField(kind, targetField, cand.amount);
+      const current = docs[kind] ?? defaultDoc(kind, period);
+      const nextFields: DocFields = { ...current.fields };
+
+      // 계약서는 기본급(basePay), 명세서 및 입금내역은 실지급/실입금액(netPay)이 핵심 검증 기준 금액입니다.
+      const primaryField: keyof DocFields = kind === "contract" ? "basePay" : "netPay";
+      nextFields[primaryField] = cand.amount;
+
+      // 라벨에 따라 세부 항목도 동기화
+      const norm = (cand.label || "").trim().toLowerCase();
+      if (norm.includes("기본급") || norm.includes("base") || norm.includes("월급")) {
+        nextFields.basePay = cand.amount;
+      } else if (norm.includes("실지급") || norm.includes("실수령") || norm.includes("차인지급") || norm.includes("net") || norm.includes("입금")) {
+        nextFields.netPay = cand.amount;
+      } else if (norm.includes("수당") || norm.includes("연장") || norm.includes("식대")) {
+        nextFields.allowances = cand.amount;
+      } else if (norm.includes("공제")) {
+        nextFields.deductions = cand.amount;
+      }
+
+      setDocs((prev) => ({
+        ...prev,
+        [kind]: {
+          ...(prev[kind] ?? defaultDoc(kind, period)),
+          fields: nextFields,
+        },
+      }));
+
+      syncDocumentExtractedData(kind, nextFields);
+
+      const fieldName = kind === "contract" ? t("pay.field.basePay") : t("pay.field.netPay");
       toast.success(
         t("pay.candidate.appliedToast", {
-          field: t(FIELD_LABEL_KEYS[targetField]),
+          field: `${cand.label} (${fieldName})`,
           amount: won(cand.amount),
         })
       );
     },
-    [t, updateField]
+    [docs, period, syncDocumentExtractedData, t]
   );
 
   const handleUpload = async (kind: DocKind, file: File) => {
@@ -793,8 +875,13 @@ export default function PayCheckPage() {
       statementNet !== undefined && depositNet !== undefined
         ? depositNet - statementNet
         : undefined;
-    const expectedDate = docs.statement?.fields.payDate || `${period}-25`;
-    const actualDate = docs.deposit?.fields.payDate || `${period}-25T09:14:00`;
+    const rawExpected = docs.statement?.fields.payDate || `${period}-25`;
+    const expectedDate = rawExpected.includes("T") ? rawExpected.split("T")[0] : rawExpected.slice(0, 10);
+
+    const rawActual = docs.deposit?.fields.payDate;
+    const actualDate = rawActual
+      ? (rawActual.includes("T") ? rawActual : `${rawActual.slice(0, 10)}T09:14:00`)
+      : `${period}-25T09:14:00`;
 
     let backendPaycheckId: number | undefined;
     try {
@@ -877,6 +964,7 @@ export default function PayCheckPage() {
           description={t("pay.startDesc")}
           cta={t("pay.startCta")}
           onStart={handleStartNewCheck}
+          disabled={isBeforePayday}
         >
           <div className="rounded-3xl bg-card border border-border/70 p-5 shadow-xs backdrop-blur-md">
             <label className="text-xs font-bold text-muted-foreground" htmlFor="period">
@@ -888,7 +976,8 @@ export default function PayCheckPage() {
                 type="month"
                 value={period}
                 onChange={(e) => {
-                  const next = e.target.value || periodOf(new Date());
+                  hasUserChangedPeriodRef.current = true;
+                  const next = e.target.value || getInitialPayPeriod(userPayDay);
                   setPeriod(next);
                 }}
                 className="h-12 flex-1 rounded-2xl text-sm font-bold border border-input bg-background shadow-xs focus-visible:ring-2 focus-visible:ring-ring"
@@ -897,6 +986,37 @@ export default function PayCheckPage() {
                 {monthLabel(period)}
               </span>
             </div>
+
+            {/* 미도래 월(급여일 전)인 경우 안내 카드 및 D-Day 배지 노출 */}
+            {isBeforePayday && (
+              <div className="mt-4 rounded-2xl bg-warn/10 border border-warn/30 p-4 text-xs font-semibold text-warn-foreground space-y-2 pc-rise">
+                <div className="flex items-center justify-between">
+                  <span className="font-extrabold text-warn flex items-center gap-1.5">
+                    <AlertTriangle className="size-4 shrink-0 text-warn" />
+                    아직 {Number(period.split("-")[1])}월 급여일({Number(period.split("-")[1])}월 {userPayDay}일) 전입니다
+                  </span>
+                  <span className="rounded-full bg-warn/25 px-2.5 py-0.5 text-[11px] font-black text-warn">
+                    {dDayText}
+                  </span>
+                </div>
+                <p className="text-[11px] leading-relaxed text-muted-foreground">
+                  급여 입금 후 대조할 수 있습니다. 이미 완료된 지난달 급여를 확인하시려면 이전 월을 선택해 주세요.
+                </p>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    hasUserChangedPeriodRef.current = true;
+                    setPeriod(getInitialPayPeriod(userPayDay));
+                  }}
+                  className="mt-1 h-8 rounded-xl text-xs font-bold border-warn/40 bg-background text-foreground hover:bg-warn/15 shadow-2xs"
+                >
+                  직전 완료 월({monthLabel(getInitialPayPeriod(userPayDay))}) 선택하기
+                </Button>
+              </div>
+            )}
+
             <p className="mt-3.5 flex items-center gap-1.5 text-[11px] font-medium leading-relaxed text-muted-foreground">
               <ShieldCheck className="size-4 text-primary shrink-0" />
               {t("pay.privacy")}
@@ -1233,8 +1353,8 @@ export default function PayCheckPage() {
                       {candidates[currentKind].map((cand, idx) => {
                         const isRec = isCandidateRecommended(currentKind, cand.label);
                         const translatedLabel = translateCandidateLabel(cand.label, t);
-                        const targetField = cand.targetField;
-                        const isCurrentVal = targetField ? currentDoc?.fields[targetField] === cand.amount : false;
+                        const primaryField: keyof DocFields = currentKind === "contract" ? "basePay" : "netPay";
+                        const isCurrentVal = currentDoc?.fields[primaryField] === cand.amount;
 
                         return (
                           <button
