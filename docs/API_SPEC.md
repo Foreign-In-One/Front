@@ -511,3 +511,34 @@ external client / adapter
 서버 삭제를 대신하지 않는다. `userId=1`은 공유 데모 규칙이지 인증이 아니다.
 
 설정·테스트·현재 단계의 제한은 `docs/RECORDS_API_INTEGRATION.md`를 참고한다.
+
+---
+
+# 14. Dashboard 조회 연동 (Backend PR #9)
+
+`GET /api/dashboard?userId=1`을 사용한다. `year`를 생략하여 백엔드의
+Asia/Seoul 현재 연도를 사용하고, 응답의 `data.year`를 화면에 표시한다.
+기존 백엔드의 선택적 `year` query 계약은 변경하지 않는다.
+
+성공 응답의 `data` 필드:
+
+- `year`: 급여 집계 연도.
+- `paySummary`: `totalReceivedPay`, `recordedMonths`, `amountKnownMonths`,
+  `recordedPeriods`, `missingAmountPeriods`.
+- `latestPaycheck`, `latestTaxCheck`, `latestExitCheck`: RecordSummary 또는 null.
+- `recentRecords`: 전체 이력의 최근 RecordSummary 최대 3건.
+
+급여 집계는 급여월의 연도를 기준으로 서버에서 계산한다. 프론트에서 최근 3건을
+합산하거나 연환산하지 않고, 세전 연간 소득이나 세액으로 표시하지 않는다.
+금액 미상은 null, 확인된 실제 0원은 0이다. 일부 월만 확인됐으면 등록 월 수,
+금액 확인 월 수, 금액 미확인 월 목록을 함께 표시한다.
+
+연도 필터는 `paySummary`에만 적용된다. 최신 결과와 최근 기록은 전체 연도
+기준이며 각 기록의 `payPeriod`, `taxYear`, `expectedExitDate`를 별도로 표시한다.
+요약·다음 행동은 저장된 원문이다. API에 없는 세금 적용 가능 항목 수나
+출국 준비 완료 항목 수는 만들지 않는다.
+
+`services/records-api.ts`의 기존 GET·취소·15초 제한·응답 검증을 공유한다.
+Dashboard 분석 결과는 목업/브라우저 저장소로 대체하지 않는다.
+프로필·캘린더와 공통 API의 기존 동작은 이번 단계에서 변경하지 않는다.
+상세 절차와 제한은 `docs/DASHBOARD_API_INTEGRATION.md`를 참고한다.

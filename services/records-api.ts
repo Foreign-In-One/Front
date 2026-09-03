@@ -30,6 +30,23 @@ export interface RecordsResponse {
   counts: RecordCounts;
 }
 
+export interface PaySummary {
+  totalReceivedPay: number | null;
+  recordedMonths: number;
+  amountKnownMonths: number;
+  recordedPeriods: string[];
+  missingAmountPeriods: string[];
+}
+
+export interface DashboardResponse {
+  year: number;
+  paySummary: PaySummary;
+  latestPaycheck: RecordSummary | null;
+  latestTaxCheck: RecordSummary | null;
+  latestExitCheck: RecordSummary | null;
+  recentRecords: RecordSummary[];
+}
+
 /** Only the stored card fields rendered by Records, not a new analysis. */
 export interface StoredTaxCard {
   id: string;
@@ -235,4 +252,77 @@ export async function getStoredTaxCardsApi(
     throw new RecordsApiError('response');
   }
   return cards;
+}
+
+function isPaySummary(value: unknown, year: number): value is PaySummary {
+  if (
+    !isObject(value) ||
+    !isNullableAmount(value.totalReceivedPay) ||
+    !isCount(value.recordedMonths) ||
+    value.recordedMonths > 12 ||
+    !isCount(value.amountKnownMonths) ||
+    value.amountKnownMonths > value.recordedMonths ||
+    !Array.isArray(value.recordedPeriods) ||
+    !Array.isArray(value.missingAmountPeriods)
+  ) {
+    return false;
+  }
+  const { recordedPeriods, missingAmountPeriods } = value;
+  const isPeriod = (period: unknown) =>
+    typeof period === 'string' &&
+    /^\d{4}-(0[1-9]|1[0-2])$/.test(period) &&
+    period.startsWith(`${year}-`);
+  return (
+    recordedPeriods.every(isPeriod) &&
+    missingAmountPeriods.every(isPeriod) &&
+    new Set(recordedPeriods).size === recordedPeriods.length &&
+    new Set(missingAmountPeriods).size === missingAmountPeriods.length &&
+    missingAmountPeriods.every((period) => recordedPeriods.includes(period)) &&
+    recordedPeriods.length === value.recordedMonths &&
+    missingAmountPeriods.length ===
+      value.recordedMonths - value.amountKnownMonths &&
+    (value.amountKnownMonths === 0
+      ? value.totalReceivedPay === null
+      : value.totalReceivedPay !== null)
+  );
+}
+
+function isLatestRecord(
+  value: unknown,
+  type: RecordType,
+): value is RecordSummary | null {
+  return value === null || (isRecordSummary(value) && value.type === type);
+}
+
+/** Server chooses the current Asia/Seoul year; latest records span all years. */
+export async function getDashboardApi(
+  signal?: AbortSignal,
+): Promise<DashboardResponse> {
+  const data = await readData('/api/dashboard?userId=1', signal);
+  if (
+    !isObject(data) ||
+    !isCount(data.year) ||
+    data.year < 2000 ||
+    data.year > 9999 ||
+    !isPaySummary(data.paySummary, data.year) ||
+    !isLatestRecord(data.latestPaycheck, 'PAYCHECK') ||
+    !isLatestRecord(data.latestTaxCheck, 'TAX_CHECK') ||
+    !isLatestRecord(data.latestExitCheck, 'EXIT_CHECK') ||
+    !Array.isArray(data.recentRecords) ||
+    data.recentRecords.length > 3 ||
+    !data.recentRecords.every(isRecordSummary) ||
+    new Set(data.recentRecords.map((record) => record.recordKey)).size !==
+      data.recentRecords.length
+  ) {
+    throw new RecordsApiError('response');
+  }
+  // Validation only. Never recompute the server's sum from recentRecords.
+  return {
+    year: data.year,
+    paySummary: data.paySummary,
+    latestPaycheck: data.latestPaycheck,
+    latestTaxCheck: data.latestTaxCheck,
+    latestExitCheck: data.latestExitCheck,
+    recentRecords: data.recentRecords,
+  };
 }
