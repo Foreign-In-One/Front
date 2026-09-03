@@ -112,6 +112,46 @@ for (const amount of [null, 0, 123.45]) {
   });
 }
 
+for (const [field, value] of [
+  ['recordedAt', 'invalid'],
+  ['recordedAt', '2026-09-03T18:00:00\n'],
+  ['analyzedAt', '2026-02-29T09:15:00'],
+  ['analyzedAt', '2026-04-31T09:15:00'],
+  ['analyzedAt', '2026-09-03T24:00:00'],
+  ['analyzedAt', '2026-09-03T09:60:00'],
+  ['analyzedAt', '2026-09-03T09:15:60'],
+  ['analyzedAt', '2026-09-03T09:15:00Z'],
+  ['analyzedAt', '2026-09-03T09:15:00+09:00'],
+  ['payPeriod', '2026-13'],
+  ['payPeriod', '2026-00'],
+  ['payPeriod', '2026-7'],
+  ['payPeriod', '2026-07\n'],
+  ['payPeriod', '0000-07'],
+  ['taxYear', 0],
+  ['taxYear', 1999],
+  ['taxYear', 2101],
+  ['taxYear', 2026.5],
+  ['expectedExitDate', '2026-02-31'],
+  ['expectedExitDate', '2026-13-01'],
+  ['expectedExitDate', '2026-12-00'],
+  ['expectedExitDate', '2026-12-31T00:00:00'],
+]) {
+  test(`reject invalid record ${field}=${value}`, async (t) => {
+    respond(t, list([record('TAX_CHECK', { [field]: value })]));
+    await assert.rejects(getRecordsApi(), isFailure('response'));
+  });
+}
+
+test('record dates retain nulls, leap days, nanos and original local time', async (t) => {
+  const data = list([
+    record('PAYCHECK', { recordedAt: null, analyzedAt: null, payPeriod: null }),
+    record('TAX_CHECK', { analyzedAt: '2024-02-29T23:59:59.123456789' }),
+    record('EXIT_CHECK', { expectedExitDate: '2028-02-29' }),
+  ]);
+  respond(t, data);
+  assert.deepEqual(await getRecordsApi(), data);
+});
+
 for (const status of [400, 404, 500]) {
   test(`HTTP ${status} is an error, not an empty list`, async (t) => {
     t.mock.method(

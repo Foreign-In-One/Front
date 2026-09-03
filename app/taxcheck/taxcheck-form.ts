@@ -67,9 +67,9 @@ export function validateTaxForm(
   const nonTaxable = cents(form.nonTaxableIncome);
   if (annual === undefined) return 'annualIncome';
   if (nonTaxable === undefined) return 'nonTaxableIncome';
+  // The confirmed-input bound does not depend on supported calculation years.
   if (
     form.confirmed &&
-    (year === 2025 || year === 2026) &&
     annual !== null &&
     nonTaxable !== null &&
     annual + nonTaxable > BigInt('999999999999999')

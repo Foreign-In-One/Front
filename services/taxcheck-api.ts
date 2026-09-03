@@ -1,4 +1,4 @@
-import { isPaySummary, type PaySummary } from './records-api';
+import { isLocalDateTime, isPaySummary, type PaySummary } from './records-api';
 
 export interface TaxIncome {
   annualIncome: number | null;
@@ -179,8 +179,7 @@ function response(value: unknown): value is TaxResponse {
     !(value.income === null || income(value.income)) ||
     !(value.conditions === null || conditions(value.conditions)) ||
     !isPaySummary(value.paySummary, value.taxYear) ||
-    !text(value.analyzedAt) ||
-    !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?$/.test(value.analyzedAt) ||
+    !isLocalDateTime(value.analyzedAt) ||
     !object(value.result)
   )
     return false;

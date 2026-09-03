@@ -15,6 +15,7 @@ import { StatusPill } from '@/components/status-pill';
 import { Button } from '@/components/ui/button';
 import { type TKey, useT } from '@/i18n';
 import { formatKDate } from '@/lib/paycycle/format';
+import { formatKrw } from '@/lib/paycycle/money';
 import { cn } from '@/lib/utils';
 import {
   getRecordsApi,
@@ -299,11 +300,7 @@ export default function RecordsPage() {
                     {record.type === 'PAYCHECK' && (
                       <>
                         {record.payPeriod ?? unknown} · {copy.receivedPay}:{' '}
-                        {record.actualAmount === null
-                          ? unknown
-                          : record.actualAmount.toLocaleString(locale, {
-                              maximumFractionDigits: 2,
-                            }) + (locale === 'ko' ? '원' : ' KRW')}
+                        {formatKrw(record.actualAmount, locale, unknown)}
                       </>
                     )}
                     {record.type === 'TAX_CHECK' && (

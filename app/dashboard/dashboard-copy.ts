@@ -1,4 +1,5 @@
 import type { UiLocale } from '@/i18n';
+import { formatKrw } from '../../lib/paycycle/money';
 
 const ko = {
   notice:
@@ -166,11 +167,5 @@ export function dashboardStatusLabel(
 
 /** Preserve cents and a confirmed zero; never treat unknown as zero. */
 export function dashboardMoney(value: number | null, locale: UiLocale): string {
-  return value === null
-    ? '—'
-    : new Intl.NumberFormat(locale, {
-        style: 'currency',
-        currency: 'KRW',
-        maximumFractionDigits: 2,
-      }).format(value);
+  return formatKrw(value, locale);
 }

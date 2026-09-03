@@ -96,6 +96,40 @@ function isNullableString(value: unknown): value is string | null {
   return value === null || typeof value === 'string';
 }
 
+/** Validate a LocalDate without Date parsing, rollover, or timezone conversion. */
+function isLocalDate(value: unknown): value is string {
+  if (typeof value !== 'string') return false;
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+  if (!match || match[0] !== value) return false;
+  const [, y, m, d] = match;
+  const year = Number(y);
+  const month = Number(m);
+  const day = Number(d);
+  if (year < 1 || month < 1 || month > 12 || day < 1) return false;
+  const leap = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
+  const days = [31, leap ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+  return day <= days[month - 1];
+}
+
+/** Backend LocalDateTime: no offset, required seconds, optional 1–9 fractional digits. */
+export function isLocalDateTime(value: unknown): value is string {
+  if (typeof value !== 'string') return false;
+  const match =
+    /^(\d{4}-\d{2}-\d{2})T(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d{1,9})?$/.exec(
+      value,
+    );
+  return match !== null && match[0] === value && isLocalDate(match[1]);
+}
+
+function isYearMonth(value: unknown): value is string {
+  return (
+    typeof value === 'string' &&
+    value.length === 7 &&
+    /^\d{4}-(0[1-9]|1[0-2])$/.test(value) &&
+    Number(value.slice(0, 4)) > 0
+  );
+}
+
 function isNullableAmount(value: unknown): value is number | null {
   return (
     value === null ||
@@ -109,14 +143,17 @@ function isRecordSummary(value: unknown): value is RecordSummary {
     isRecordType(value.type) &&
     isPositiveId(value.sourceId) &&
     value.recordKey === `${value.type}:${value.sourceId}` &&
-    isNullableString(value.recordedAt) &&
-    isNullableString(value.analyzedAt) &&
+    (value.recordedAt === null || isLocalDateTime(value.recordedAt)) &&
+    (value.analyzedAt === null || isLocalDateTime(value.analyzedAt)) &&
     isNullableString(value.status) &&
     isNullableString(value.analysisSummary) &&
     isNullableString(value.nextAction) &&
-    isNullableString(value.payPeriod) &&
-    (value.taxYear === null || isCount(value.taxYear)) &&
-    isNullableString(value.expectedExitDate) &&
+    (value.payPeriod === null || isYearMonth(value.payPeriod)) &&
+    (value.taxYear === null ||
+      (isCount(value.taxYear) &&
+        value.taxYear >= 2000 &&
+        value.taxYear <= 2100)) &&
+    (value.expectedExitDate === null || isLocalDate(value.expectedExitDate)) &&
     isNullableAmount(value.actualAmount) &&
     (value.readinessScore === null || isCount(value.readinessScore))
   );

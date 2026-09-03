@@ -10,7 +10,7 @@
 - 현재 확인된 API를 가진 **로컬 Backend-integration-check:18080**을 사용한다.
   공개 배포 서버에 PR #7이 반영됐다고 가정하지 않는다.
 
-변경은 TaxCheck 화면·전용 API 서비스·입력/응답 검증·테스트·문서에 한정한다.
+최초 3단계 변경은 TaxCheck 화면·전용 API 서비스·입력/응답 검증·테스트·문서에 한정한다.
 `services/records-api.ts`에서는 기존 `isPaySummary` 검증 함수를 export해서 재사용한다.
 Records/Dashboard 조회 로직과 화면, 공통 상태·프로필·디자인·OCR·백엔드·환경 파일·
 의존성·GitHub PR·배포는 바꾸지 않는다.
@@ -46,8 +46,13 @@ Records/Dashboard 조회 로직과 화면, 공통 상태·프로필·디자인·
 - 빈칸은 `null`, 확인된 없음은 `0`. 금액은 정수 13자리/소수 2자리까지 검증한다.
   음수·쉼표·지수 표기·범위 초과는 요청하지 않는다. 소득 합산 상한 검증은 정수 센트로
   수행한다. 금액을 세액으로 계산하는 코드는 없다.
+- PR #38 리뷰 보완: 확인된 두 소득 항목의 합계 상한은 계산 지원 연도와 무관하게
+  모든 허용 입력 연도에 적용한다. 미확인·미입력 및 계산 미지원 연도 안내는 유지한다.
 - 카드·분석 설명·근거·경고는 서버 원문이다. UI는 한국어·영어·베트남어·중국어를 지원한다.
   응답 구조, ID/연도/모드, 급여 요약 정합성, 중복 카드, 근거 URL을 검증한다.
+- `analyzedAt`은 현재 백엔드 `LocalDateTime` 계약에 따라 오프셋 없는 시각으로
+  검증한다. 실제 날짜·시분초·선택적 소수 초 1~9자리를 확인하고 원문을 보존한다.
+  `Z`/오프셋 허용으로 계약을 임의 확장하지 않는다. 정확한 형식은 API_SPEC에 명시한다.
 
 ## 요청 실패와 중복 저장
 
@@ -84,10 +89,26 @@ pnpm build
 pnpm exec biome check app/taxcheck/page.tsx app/taxcheck/taxcheck-copy.ts app/taxcheck/taxcheck-form.ts app/taxcheck/taxcheck-result.tsx services/taxcheck-api.ts services/records-api.ts tests/taxcheck-api.test.mjs tests/taxcheck-form.test.mjs tests/taxcheck-page.test.mjs tests/taxcheck-test-helpers.mjs
 ```
 
-검사 구성: 기존 Records/Dashboard 96개 + Tax API 36개 + 입력/문구 31개 + 페이지 15개
+최초 검사 구성: 기존 Records/Dashboard 96개 + Tax API 36개 + 입력/문구 31개 + 페이지 15개
 = 총 178개. 기존 TypeScript/Node 테스트 방식만 사용하며 새 테스트 라이브러리는 없다.
 페이지 검사는 실제 소스의 이벤트/효과를 격리 훅 환경에서 실행하고 HTML을 검사한다.
 실제 브라우저의 React 스케줄링·CSS·CORS·MySQL 통신을 검증하는 E2E는 아니다.
+
+### PR #38 리뷰 보완 검증 (2026-09-03)
+
+Front `41ed2bd` 위에 리뷰 보완을 적용해 위 테스트 명령의 **240개가 통과**했다.
+기존 178개에 회귀 사례 62개를 추가했으며 TypeScript·프로덕션 빌드와 변경 코드의
+Biome 검사도 통과했다. 주요 보완은 다음과 같다.
+
+- Records/Dashboard 날짜·기간·귀속연도 응답 검증: 윤년·달별 일수·시분초·소수 초,
+  허용 범위와 `null`을 구분한다. TaxCheck 상세 응답도 같은 날짜 검증을 사용한다.
+- 소득 합계 상한: 계산 지원 연도와 관계없이 확인된 입력 합계를 검증한다.
+- Records/Dashboard 금액: `lib/paycycle/money.ts`를 공유해 네 언어의 원화 표기를
+  통일하고 0·소수 금액·미확인 값의 차이를 유지한다.
+
+이번 보완에서는 Records/Dashboard의 검증·금액 표시까지 수정 범위에 포함한다.
+백엔드 날짜 계약, 저장/시뮬레이션 동작, 의존성 및 환경 설정은 변경하지 않는다.
+브라우저·실제 MySQL 연동은 사용자 로컬 환경에서 별도로 확인한다.
 
 ## 노트북에서 새 흐름만 확인
 

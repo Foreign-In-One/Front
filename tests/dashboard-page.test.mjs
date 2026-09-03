@@ -32,7 +32,10 @@ function evaluate(code, dependencies = {}) {
   return module.exports;
 }
 const pageCode = await compile('../app/dashboard/page.tsx');
-const copy = evaluate(await compile('../app/dashboard/dashboard-copy.ts'));
+const money = evaluate(await compile('../lib/paycycle/money.ts'));
+const copy = evaluate(await compile('../app/dashboard/dashboard-copy.ts'), {
+  '../../lib/paycycle/money': money,
+});
 const format = evaluate(await compile('../lib/paycycle/format.ts'));
 
 // Isolated markup tests, not browser/E2E tests. Supply the two page hook states;
@@ -188,3 +191,78 @@ test('render original record year, saved text and escaped HTML', () => {
   assert.ok(html.includes('&lt;script&gt;'));
   assert.ok(!html.includes('<script>'));
 });
+
+// Verify the actual Records render consumes the same formatter, not a second suffix rule.
+const recordsPageCode = await compile('../app/records/page.tsx');
+const recordsCopy = evaluate(await compile('../app/records/records-copy.ts'));
+function renderRecords(amount, locale) {
+  let hookIndex = 0;
+  const states = [
+    'ALL',
+    0,
+    {
+      requestKey: 'ALL:0',
+      phase: 'ready',
+      data: {
+        items: [
+          {
+            recordKey: 'PAYCHECK:1',
+            type: 'PAYCHECK',
+            sourceId: 1,
+            recordedAt: '2026-09-03T18:00:00',
+            status: 'NORMAL',
+            payPeriod: '2026-07',
+            actualAmount: amount,
+            analysisSummary: 'saved',
+          },
+        ],
+        counts: { all: 1, paycheck: 1, taxCheck: 0, exitCheck: 0 },
+      },
+    },
+    null,
+  ];
+  const { default: Page } = evaluate(recordsPageCode, {
+    react: { ...React, useState: () => [states[hookIndex++], () => {}] },
+    'lucide-react': Object.fromEntries(
+      ['ChevronDown', 'History', 'Plane', 'Receipt', 'RotateCcw', 'Wallet'].map(
+        (name) => [name, () => null],
+      ),
+    ),
+    'next/link': ({ href, children }) =>
+      React.createElement('a', { href }, children),
+    '@/components/app-shell': {
+      AppShell: ({ children }) => React.createElement('main', null, children),
+    },
+    '@/components/status-pill': {
+      StatusPill: ({ children }) => React.createElement('span', null, children),
+    },
+    '@/components/ui/button': {
+      Button: ({ children }) =>
+        React.createElement('button', { type: 'button' }, children),
+    },
+    '@/i18n': { useT: () => ({ locale, t: (key) => key }) },
+    '@/lib/paycycle/format': format,
+    '@/lib/paycycle/money': money,
+    '@/lib/utils': { cn: (...values) => values.filter(Boolean).join(' ') },
+    '@/services/records-api': {
+      getRecordsApi: () => {
+        throw new Error('Unexpected request');
+      },
+    },
+    './records-copy': recordsCopy,
+  });
+  return renderToStaticMarkup(React.createElement(Page));
+}
+
+for (const locale of ['ko', 'en', 'vi', 'zh']) {
+  test(`Records render matches Dashboard KRW formatting for ${locale}`, () => {
+    for (const amount of [0, 2380000, 2380000.25]) {
+      assert.ok(
+        renderRecords(amount, locale).includes(
+          copy.dashboardMoney(amount, locale),
+        ),
+      );
+    }
+    assert.ok(renderRecords(null, locale).includes('common.unknownValue'));
+  });
+}

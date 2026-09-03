@@ -417,10 +417,27 @@ Front `/taxcheck?taxCheckId=1` 진입·새로고침은 이 GET만 호출한다.
 모르는 금액은 `null`, 확인된 없음만 `0`; 소득 확인은 사용자가 명시한다.
 조건의 `null`도 미확인으로 보존하며, 화면에서 적용 자격으로 해석하지 않는다.
 
+소득 두 항목이 모두 입력되고 `confirmed=true`이면 프론트는 합계를
+`9,999,999,999,999.99` 이하로 제한한다. 이 입력 상한은 허용된 모든 귀속연도에
+동일하게 적용하며, 2025·2026년에만 참고액을 계산하는 백엔드 규칙과 구분한다.
+미입력·미확인 값은 그대로 전달하며, 계산 지원 연도를 확장하거나 세액을 계산하지 않는다.
+
 성공 envelope는 `{ success: true, data: TaxResponse, message: string }`이다.
 `TaxResponse`는 `taxCheckId`, `sourceTaxCheckId`, `simulation`, `taxYear`,
 `taxDocumentId`, `income`, `conditions`, `paySummary`, `result`, `analyzedAt`를 담는다.
 저장 결과는 `simulation=false`, 새 `taxCheckId`, `sourceTaxCheckId=null`이다.
+
+### 분석 시각 계약
+
+`analyzedAt`은 Backend PR #7의 `LocalDateTime`을 문자열로 직렬화한 값이다.
+형식은 `YYYY-MM-DDTHH:mm:ss[.fraction]`이며 소수 초는 생략하거나 1~9자리다.
+예: `2026-09-03T18:07:02`, `2026-09-03T18:07:02.123456789`.
+실제 존재하는 날짜, 00~23시·00~59분·00~59초만 허용한다.
+현재 저장 서비스는 Asia/Seoul의 로컬 시각을 생성하지만 문자열 자체에는 시간대가 없다.
+`Z` 또는 `+09:00` 같은 오프셋은 현 계약에 포함하지 않으며 임의로 붙이거나 제거하지 않는다.
+시간대 포함 형식으로 전환할 때는 백엔드·소비 화면의 표시 정책·테스트를 함께 변경한다.
+시뮬레이션에서도 원본 `analyzedAt`을 유지한다. 잘못된 저장 POST 응답은 기존과 같이
+저장 여부 불확실 오류로 처리하며 자동 재시도하지 않는다.
 
 - `result.flatTaxEstimate`는 서버의 19% 적용 가정 참고값만 표시한다. 소득/확인/
   연도별 규칙이 부족하면 `null`이다. 프론트에서 다시 계산하지 않는다.
@@ -562,6 +579,22 @@ external client / adapter
 `expectedExitDate`, `actualAmount`, `readinessScore`이다.
 출처 ID가 같아도 종류가 다르면 별도 기록이며 `recordKey`를 키로 쓴다.
 서버 정렬 순서와 `null`을 보존하고, 금액 미상과 0원을 구분한다.
+
+`RecordSummary`의 날짜·기간은 다음과 같이 검증한다. Dashboard에서 사용하는
+최신 기록·최근 기록에도 같은 규칙을 적용한다.
+
+| 필드 | 값이 null이 아닐 때의 형식 |
+| --- | --- |
+| `recordedAt`, `analyzedAt` | 실제 존재하는 `YYYY-MM-DDTHH:mm:ss[.fraction]`; 소수 초 1~9자리 선택; 시간대 없음 |
+| `expectedExitDate` | 실제 존재하는 `YYYY-MM-DD` |
+| `payPeriod` | `YYYY-MM`; 연도 0001~9999, 월 01~12 |
+| `taxYear` | TaxCheck 클라이언트 지원 범위인 정수 2000~2100 |
+
+날짜의 연도는 0001~9999이며 윤년과 월별 일수를 검증한다. 정상적인 `null`은
+정보 없음으로 보존하지만 잘못된 문자열을 `null`이나 0으로 바꾸지는 않는다.
+오프셋 없는 시각은 원천 값 그대로 유지하고 브라우저의 시간대로 추정 변환하지 않는다.
+Records와 Dashboard의 KRW 금액은 공용 포맷 함수로 표시하며 확인된 0원·소수점과
+기존 정보 없음 안내를 유지한다. 금액을 재계산하거나 정수 원으로 반올림하지 않는다.
 
 프론트는 `services/records-api.ts`에서 성공 여부와 사용 필드를 검증한다.
 이 조회에는 공통 API의 목업 폴백을 적용하지 않는다.

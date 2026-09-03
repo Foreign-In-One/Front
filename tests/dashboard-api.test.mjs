@@ -11,11 +11,26 @@ async function importTypescript(path) {
       target: ts.ScriptTarget.ES2022,
     },
   }).outputText;
+  const linked = output.replace(
+    /(['"])\.\.\/\.\.\/lib\/paycycle\/money\1/,
+    JSON.stringify(moneyUrl),
+  );
   return import(
-    `data:text/javascript;base64,${Buffer.from(output).toString('base64')}`
+    `data:text/javascript;base64,${Buffer.from(linked).toString('base64')}`
   );
 }
 
+const moneyOutput = ts.transpileModule(
+  await readFile(new URL('../lib/paycycle/money.ts', import.meta.url), 'utf8'),
+  {
+    compilerOptions: {
+      module: ts.ModuleKind.ESNext,
+      target: ts.ScriptTarget.ES2022,
+    },
+  },
+).outputText;
+const moneyUrl = `data:text/javascript;base64,${Buffer.from(moneyOutput).toString('base64')}`;
+const { formatKrw } = await import(moneyUrl);
 const previousBase = process.env.NEXT_PUBLIC_API_BASE_URL;
 process.env.NEXT_PUBLIC_API_BASE_URL = 'http://dashboard.test/';
 const { getDashboardApi, RecordsApiError } = await importTypescript(
@@ -160,6 +175,25 @@ test('same IDs across types, null timestamps, zero readiness and unknown status 
   assert.deepEqual(await getDashboardApi(), data);
 });
 
+for (const [field, value] of [
+  ['recordedAt', 'invalid'],
+  ['analyzedAt', '2026-02-31T25:99:99'],
+  ['payPeriod', '2026-13'],
+  ['taxYear', 0],
+  ['expectedExitDate', '2026-02-29'],
+]) {
+  for (const target of ['latest', 'recent']) {
+    test(`reject ${target} record ${field}=${value}`, async (t) => {
+      const data = dashboard();
+      const item =
+        target === 'latest' ? data.latestTaxCheck : data.recentRecords[0];
+      item[field] = value;
+      respond(t, data);
+      await assert.rejects(getDashboardApi(), failure('response'));
+    });
+  }
+}
+
 const invalidSummaries = {
   'string total': { totalReceivedPay: '2380000' },
   'negative total': { totalReceivedPay: -1 },
@@ -302,6 +336,10 @@ test('timeout aborts the request after 15 seconds', async (t) => {
 
 for (const locale of ['ko', 'en', 'vi', 'zh']) {
   test(`display ${locale}: null, zero, cents and unknown statuses`, () => {
+    for (const value of [null, 0, 2380000, 2600000.1]) {
+      assert.equal(dashboardMoney(value, locale), formatKrw(value, locale));
+    }
+    assert.equal(formatKrw(null, locale, 'unknown'), 'unknown');
     assert.equal(dashboardMoney(null, locale), '—');
     assert.notEqual(dashboardMoney(0, locale), '—');
     assert.notEqual(

@@ -28,6 +28,50 @@ test('TaxCheck: GET reloads one saved snapshot with explicit demo user and no co
   });
   assert.deepEqual(await getTaxCheckApi(1), expected);
 });
+for (const value of [
+  '2000-02-29T00:00:00',
+  '2024-02-29T00:00:00',
+  '2026-09-03T23:59:59.1',
+  '2026-09-03T18:07:02.123456789',
+]) {
+  test(`TaxCheck: preserves valid local datetime ${value}`, async (t) => {
+    const data = fixture();
+    data.analyzedAt = value;
+    respond(t, data);
+    assert.equal((await getTaxCheckApi(1)).analyzedAt, value);
+  });
+}
+for (const value of [
+  '2026-02-29T18:00:00',
+  '2026-04-31T18:00:00',
+  '2100-02-29T18:00:00',
+  '2026-13-01T18:00:00',
+  '2026-09-00T18:00:00',
+  '2026-09-03T24:00:00',
+  '2026-09-03T18:60:00',
+  '2026-09-03T18:00:60',
+  '2026-09-03T18:00:00.1234567890',
+  '2026-09-03T18:00:00Z',
+  '2026-09-03T18:00:00+09:00',
+  '2026-09-03T18:00:00-05:00',
+  '2026-09-03 18:00:00',
+  '2026-09-03T18:00:00\n',
+  '0000-09-03T18:00:00',
+]) {
+  test(`TaxCheck: rejects datetime outside current contract ${value}`, async (t) => {
+    const data = fixture();
+    data.analyzedAt = value;
+    respond(t, data);
+    await assert.rejects(getTaxCheckApi(1), failure('response'));
+  });
+}
+test('TaxCheck: invalid saved timestamp keeps save uncertainty and never auto-retries', async (t) => {
+  const data = fixture();
+  data.analyzedAt = '2026-02-31T25:99:99';
+  const mock = respond(t, data);
+  await assert.rejects(analyzeTaxCheckApi(input()), failure('response', true));
+  assert.equal(mock.mock.callCount(), 1);
+});
 test('TaxCheck: analysis sends only manual input, not frontend salary totals or profile', async (t) => {
   const expected = fixture();
   const mock = respond(t, expected, (url, options) => {
