@@ -254,7 +254,10 @@ export async function getStoredTaxCardsApi(
   return cards;
 }
 
-function isPaySummary(value: unknown, year: number): value is PaySummary {
+export function isPaySummary(
+  value: unknown,
+  year: number,
+): value is PaySummary {
   if (
     !isObject(value) ||
     !isNullableAmount(value.totalReceivedPay) ||

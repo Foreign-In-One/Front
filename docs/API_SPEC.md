@@ -377,15 +377,73 @@ getApplicableRule(caseType)
 
 # 9. TaxCheck API
 
-이번 개발에서는 PayCheck/Calendar/Profile이 우선이지만 API 규격은 미리 맞춘다.
+TaxCheck 화면은 Backend PR #7의 수동 입력·확인 계약을 사용한다.
+공유 데모 사용자 `userId=1`을 명시하며, 로그인·개인정보 격리를 제공하지 않는다.
+브라우저 자체 세무 판정·결과 자동 저장·Paycheck 실입금의 연봉 환산은 하지 않는다.
 
 ## GET `/api/tax-checks`
 
 ## GET `/api/tax-checks/{taxCheckId}`
 
+`?userId=1`로 저장된 원본 스냅샷을 조회한다.
+Front `/taxcheck?taxCheckId=1` 진입·새로고침은 이 GET만 호출한다.
+잘못된 ID, 조회 실패는 오류로 표시하며 새 분석이나 목업 결과로 대체하지 않는다.
+
 ## POST `/api/tax-checks/analyze`
 
+`?userId=1`. 사용자가 **분석하고 서버에 저장** 버튼을 눌렀을 때만 요청한다.
+
+```json
+{
+  "taxYear": 2026,
+  "taxDocumentId": null,
+  "income": {
+    "annualIncome": 30000000,
+    "nonTaxableIncome": 2000000,
+    "confirmed": true
+  },
+  "conditions": {
+    "housingSaving": null,
+    "isHomeless": null,
+    "housingSavingProof": null,
+    "usesDeductions": null
+  }
+}
+```
+
+위 금액은 가상 테스트 값이다. 현재 연도의 연중 누계·예상 연봉을 실제 연간 확정
+소득으로 확인하지 않는다. 화면 기본 연도는 한국 시간 기준 직전 완료 연도다.
+`annualIncome`은 비과세 제외 근로소득이고 `nonTaxableIncome`과 별도 입력한다.
+모르는 금액은 `null`, 확인된 없음만 `0`; 소득 확인은 사용자가 명시한다.
+조건의 `null`도 미확인으로 보존하며, 화면에서 적용 자격으로 해석하지 않는다.
+
+성공 envelope는 `{ success: true, data: TaxResponse, message: string }`이다.
+`TaxResponse`는 `taxCheckId`, `sourceTaxCheckId`, `simulation`, `taxYear`,
+`taxDocumentId`, `income`, `conditions`, `paySummary`, `result`, `analyzedAt`를 담는다.
+저장 결과는 `simulation=false`, 새 `taxCheckId`, `sourceTaxCheckId=null`이다.
+
+- `result.flatTaxEstimate`는 서버의 19% 적용 가정 참고값만 표시한다. 소득/확인/
+  연도별 규칙이 부족하면 `null`이다. 프론트에서 다시 계산하지 않는다.
+- `generalTaxEstimate`와 `taxDifference`는 `null`, 적용 자격은
+  `calculation.eligibilityConfirmed=false`로 유지한다. 환급액이나 실제 납부세액이 아니다.
+- `paySummary`는 서버가 귀속연도별 Paycheck 기록에서 집계한 실입금 참고값이다.
+  세금 계산용 소득과 혼합하지 않으며 미등록·미확인·확인된 0원을 구분한다.
+- 카드·근거·준비 자료·경고는 서버 원문이며, 원문을 프론트가 재판정하지 않는다.
+
 ## POST `/api/tax-checks/{taxCheckId}/simulate`
+
+`?userId=1`. 위 요청의 `income`, `conditions` 전체 객체만 전송한다.
+귀속연도·프로필·급여 요약·기준일은 저장 원본 스냅샷을 사용한다.
+응답은 `simulation=true`, `taxCheckId=null`, `sourceTaxCheckId=원본 ID`이며
+DB·원본·브라우저 금융 기록을 저장하거나 수정하지 않는다.
+시뮬레이션 실패 시 analyze로 전환하지 않는다. 새로고침하면 URL의 저장 원본을 조회한다.
+
+GET/POST 모두 15초 제한, `cache=no-store`, `credentials=omit`이며 자동 재시도는 없다.
+분석 POST의 네트워크 오류·시간 초과·5xx·잘못된 성공 응답은 이미 저장됐을 수 있다.
+이때 내 기록 확인을 안내하고 중복 위험 확인 전 재요청을 막는다. 요청 대기 취소는
+서버 트랜잭션 취소를 의미하지 않는다. 백엔드 멱등성 보장 기능을 추가한 것은 아니다.
+
+상세 적용·검사: [TAXCHECK_API_INTEGRATION.md](./TAXCHECK_API_INTEGRATION.md).
 
 ---
 
