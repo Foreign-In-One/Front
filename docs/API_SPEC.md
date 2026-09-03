@@ -377,15 +377,90 @@ getApplicableRule(caseType)
 
 # 9. TaxCheck API
 
-이번 개발에서는 PayCheck/Calendar/Profile이 우선이지만 API 규격은 미리 맞춘다.
+TaxCheck 화면은 Backend PR #7의 수동 입력·확인 계약을 사용한다.
+공유 데모 사용자 `userId=1`을 명시하며, 로그인·개인정보 격리를 제공하지 않는다.
+브라우저 자체 세무 판정·결과 자동 저장·Paycheck 실입금의 연봉 환산은 하지 않는다.
 
 ## GET `/api/tax-checks`
 
 ## GET `/api/tax-checks/{taxCheckId}`
 
+`?userId=1`로 저장된 원본 스냅샷을 조회한다.
+Front `/taxcheck?taxCheckId=1` 진입·새로고침은 이 GET만 호출한다.
+잘못된 ID, 조회 실패는 오류로 표시하며 새 분석이나 목업 결과로 대체하지 않는다.
+
 ## POST `/api/tax-checks/analyze`
 
+`?userId=1`. 사용자가 **분석하고 서버에 저장** 버튼을 눌렀을 때만 요청한다.
+
+```json
+{
+  "taxYear": 2026,
+  "taxDocumentId": null,
+  "income": {
+    "annualIncome": 30000000,
+    "nonTaxableIncome": 2000000,
+    "confirmed": true
+  },
+  "conditions": {
+    "housingSaving": null,
+    "isHomeless": null,
+    "housingSavingProof": null,
+    "usesDeductions": null
+  }
+}
+```
+
+위 금액은 가상 테스트 값이다. 현재 연도의 연중 누계·예상 연봉을 실제 연간 확정
+소득으로 확인하지 않는다. 화면 기본 연도는 한국 시간 기준 직전 완료 연도다.
+`annualIncome`은 비과세 제외 근로소득이고 `nonTaxableIncome`과 별도 입력한다.
+모르는 금액은 `null`, 확인된 없음만 `0`; 소득 확인은 사용자가 명시한다.
+조건의 `null`도 미확인으로 보존하며, 화면에서 적용 자격으로 해석하지 않는다.
+
+소득 두 항목이 모두 입력되고 `confirmed=true`이면 프론트는 합계를
+`9,999,999,999,999.99` 이하로 제한한다. 이 입력 상한은 허용된 모든 귀속연도에
+동일하게 적용하며, 2025·2026년에만 참고액을 계산하는 백엔드 규칙과 구분한다.
+미입력·미확인 값은 그대로 전달하며, 계산 지원 연도를 확장하거나 세액을 계산하지 않는다.
+
+성공 envelope는 `{ success: true, data: TaxResponse, message: string }`이다.
+`TaxResponse`는 `taxCheckId`, `sourceTaxCheckId`, `simulation`, `taxYear`,
+`taxDocumentId`, `income`, `conditions`, `paySummary`, `result`, `analyzedAt`를 담는다.
+저장 결과는 `simulation=false`, 새 `taxCheckId`, `sourceTaxCheckId=null`이다.
+
+### 분석 시각 계약
+
+`analyzedAt`은 Backend PR #7의 `LocalDateTime`을 문자열로 직렬화한 값이다.
+형식은 `YYYY-MM-DDTHH:mm:ss[.fraction]`이며 소수 초는 생략하거나 1~9자리다.
+예: `2026-09-03T18:07:02`, `2026-09-03T18:07:02.123456789`.
+실제 존재하는 날짜, 00~23시·00~59분·00~59초만 허용한다.
+현재 저장 서비스는 Asia/Seoul의 로컬 시각을 생성하지만 문자열 자체에는 시간대가 없다.
+`Z` 또는 `+09:00` 같은 오프셋은 현 계약에 포함하지 않으며 임의로 붙이거나 제거하지 않는다.
+시간대 포함 형식으로 전환할 때는 백엔드·소비 화면의 표시 정책·테스트를 함께 변경한다.
+시뮬레이션에서도 원본 `analyzedAt`을 유지한다. 잘못된 저장 POST 응답은 기존과 같이
+저장 여부 불확실 오류로 처리하며 자동 재시도하지 않는다.
+
+- `result.flatTaxEstimate`는 서버의 19% 적용 가정 참고값만 표시한다. 소득/확인/
+  연도별 규칙이 부족하면 `null`이다. 프론트에서 다시 계산하지 않는다.
+- `generalTaxEstimate`와 `taxDifference`는 `null`, 적용 자격은
+  `calculation.eligibilityConfirmed=false`로 유지한다. 환급액이나 실제 납부세액이 아니다.
+- `paySummary`는 서버가 귀속연도별 Paycheck 기록에서 집계한 실입금 참고값이다.
+  세금 계산용 소득과 혼합하지 않으며 미등록·미확인·확인된 0원을 구분한다.
+- 카드·근거·준비 자료·경고는 서버 원문이며, 원문을 프론트가 재판정하지 않는다.
+
 ## POST `/api/tax-checks/{taxCheckId}/simulate`
+
+`?userId=1`. 위 요청의 `income`, `conditions` 전체 객체만 전송한다.
+귀속연도·프로필·급여 요약·기준일은 저장 원본 스냅샷을 사용한다.
+응답은 `simulation=true`, `taxCheckId=null`, `sourceTaxCheckId=원본 ID`이며
+DB·원본·브라우저 금융 기록을 저장하거나 수정하지 않는다.
+시뮬레이션 실패 시 analyze로 전환하지 않는다. 새로고침하면 URL의 저장 원본을 조회한다.
+
+GET/POST 모두 15초 제한, `cache=no-store`, `credentials=omit`이며 자동 재시도는 없다.
+분석 POST의 네트워크 오류·시간 초과·5xx·잘못된 성공 응답은 이미 저장됐을 수 있다.
+이때 내 기록 확인을 안내하고 중복 위험 확인 전 재요청을 막는다. 요청 대기 취소는
+서버 트랜잭션 취소를 의미하지 않는다. 백엔드 멱등성 보장 기능을 추가한 것은 아니다.
+
+상세 적용·검사: [TAXCHECK_API_INTEGRATION.md](./TAXCHECK_API_INTEGRATION.md).
 
 ---
 
@@ -482,3 +557,79 @@ external client / adapter
 ```
 
 실제 API를 Mock으로 변경할 때 Controller/Business Logic을 수정하지 않는다.
+
+---
+
+# 13. Records 조회 연동 (Backend PR #9 / #7)
+
+이 절은 Backend의 `feature/dashboard-records` 조회 계약과
+`feature/taxcheck#5` 저장 상세 계약을 기준으로 추가한다.
+통합 테스트용 백엔드에는 두 기능과 ExitCheck 테이블이 모두 필요하다.
+
+- `GET /api/records?userId=1`: 서버 저장 기록 전체.
+- `GET /api/records?userId=1&type=PAYCHECK|TAX_CHECK|EXIT_CHECK`: 종류별 목록.
+- `GET /api/tax-checks/{sourceId}?userId=1`: 저장된 TaxCheck 상세. 새 분석이 아니다.
+
+응답은 `{ success, data, message }`이며, Records의 `data`는 `{ items, counts }`이다.
+`counts`는 필터와 관계없이 사용자의 전체 `all`, `paycheck`, `taxCheck`,
+`exitCheck` 건수를 포함한다. 현재 계약에는 페이지네이션이 없다.
+
+`items`의 필드는 `recordKey`, `type`, `sourceId`, `recordedAt`, `analyzedAt`,
+`status`, `analysisSummary`, `nextAction`, `payPeriod`, `taxYear`,
+`expectedExitDate`, `actualAmount`, `readinessScore`이다.
+출처 ID가 같아도 종류가 다르면 별도 기록이며 `recordKey`를 키로 쓴다.
+서버 정렬 순서와 `null`을 보존하고, 금액 미상과 0원을 구분한다.
+
+`RecordSummary`의 날짜·기간은 다음과 같이 검증한다. Dashboard에서 사용하는
+최신 기록·최근 기록에도 같은 규칙을 적용한다.
+
+| 필드 | 값이 null이 아닐 때의 형식 |
+| --- | --- |
+| `recordedAt`, `analyzedAt` | 실제 존재하는 `YYYY-MM-DDTHH:mm:ss[.fraction]`; 소수 초 1~9자리 선택; 시간대 없음 |
+| `expectedExitDate` | 실제 존재하는 `YYYY-MM-DD` |
+| `payPeriod` | `YYYY-MM`; 연도 0001~9999, 월 01~12 |
+| `taxYear` | TaxCheck 클라이언트 지원 범위인 정수 2000~2100 |
+
+날짜의 연도는 0001~9999이며 윤년과 월별 일수를 검증한다. 정상적인 `null`은
+정보 없음으로 보존하지만 잘못된 문자열을 `null`이나 0으로 바꾸지는 않는다.
+오프셋 없는 시각은 원천 값 그대로 유지하고 브라우저의 시간대로 추정 변환하지 않는다.
+Records와 Dashboard의 KRW 금액은 공용 포맷 함수로 표시하며 확인된 0원·소수점과
+기존 정보 없음 안내를 유지한다. 금액을 재계산하거나 정수 원으로 반올림하지 않는다.
+
+프론트는 `services/records-api.ts`에서 성공 여부와 사용 필드를 검증한다.
+이 조회에는 공통 API의 목업 폴백을 적용하지 않는다.
+서버 기록 삭제 API는 아직 정의하지 않았으며 브라우저 기록을 삭제하는 방식으로
+서버 삭제를 대신하지 않는다. `userId=1`은 공유 데모 규칙이지 인증이 아니다.
+
+설정·테스트·현재 단계의 제한은 `docs/RECORDS_API_INTEGRATION.md`를 참고한다.
+
+---
+
+# 14. Dashboard 조회 연동 (Backend PR #9)
+
+`GET /api/dashboard?userId=1`을 사용한다. `year`를 생략하여 백엔드의
+Asia/Seoul 현재 연도를 사용하고, 응답의 `data.year`를 화면에 표시한다.
+기존 백엔드의 선택적 `year` query 계약은 변경하지 않는다.
+
+성공 응답의 `data` 필드:
+
+- `year`: 급여 집계 연도.
+- `paySummary`: `totalReceivedPay`, `recordedMonths`, `amountKnownMonths`,
+  `recordedPeriods`, `missingAmountPeriods`.
+- `latestPaycheck`, `latestTaxCheck`, `latestExitCheck`: RecordSummary 또는 null.
+- `recentRecords`: 전체 이력의 최근 RecordSummary 최대 3건.
+
+급여 집계는 급여월의 연도를 기준으로 서버에서 계산한다. 프론트에서 최근 3건을
+합산하거나 연환산하지 않고, 세전 연간 소득이나 세액으로 표시하지 않는다.
+금액 미상은 null, 확인된 실제 0원은 0이다. 일부 월만 확인됐으면 등록 월 수,
+금액 확인 월 수, 금액 미확인 월 목록을 함께 표시한다.
+
+연도 필터는 `paySummary`에만 적용된다. 최신 결과와 최근 기록은 전체 연도
+기준이며 각 기록의 `payPeriod`, `taxYear`, `expectedExitDate`를 별도로 표시한다.
+요약·다음 행동은 저장된 원문이다. API에 없는 세금 적용 가능 항목 수나
+출국 준비 완료 항목 수는 만들지 않는다.
+
+`services/records-api.ts`의 기존 GET·취소·15초 제한·응답 검증을 공유한다.
+Dashboard 분석 결과는 목업/브라우저 저장소로 대체하지 않는다.
+프로필·캘린더와 공통 API의 기존 동작은 이번 단계에서 변경하지 않는다.
+상세 절차와 제한은 `docs/DASHBOARD_API_INTEGRATION.md`를 참고한다.
