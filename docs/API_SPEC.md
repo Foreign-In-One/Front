@@ -482,3 +482,32 @@ external client / adapter
 ```
 
 실제 API를 Mock으로 변경할 때 Controller/Business Logic을 수정하지 않는다.
+
+---
+
+# 13. Records 조회 연동 (Backend PR #9 / #7)
+
+이 절은 Backend의 `feature/dashboard-records` 조회 계약과
+`feature/taxcheck#5` 저장 상세 계약을 기준으로 추가한다.
+통합 테스트용 백엔드에는 두 기능과 ExitCheck 테이블이 모두 필요하다.
+
+- `GET /api/records?userId=1`: 서버 저장 기록 전체.
+- `GET /api/records?userId=1&type=PAYCHECK|TAX_CHECK|EXIT_CHECK`: 종류별 목록.
+- `GET /api/tax-checks/{sourceId}?userId=1`: 저장된 TaxCheck 상세. 새 분석이 아니다.
+
+응답은 `{ success, data, message }`이며, Records의 `data`는 `{ items, counts }`이다.
+`counts`는 필터와 관계없이 사용자의 전체 `all`, `paycheck`, `taxCheck`,
+`exitCheck` 건수를 포함한다. 현재 계약에는 페이지네이션이 없다.
+
+`items`의 필드는 `recordKey`, `type`, `sourceId`, `recordedAt`, `analyzedAt`,
+`status`, `analysisSummary`, `nextAction`, `payPeriod`, `taxYear`,
+`expectedExitDate`, `actualAmount`, `readinessScore`이다.
+출처 ID가 같아도 종류가 다르면 별도 기록이며 `recordKey`를 키로 쓴다.
+서버 정렬 순서와 `null`을 보존하고, 금액 미상과 0원을 구분한다.
+
+프론트는 `services/records-api.ts`에서 성공 여부와 사용 필드를 검증한다.
+이 조회에는 공통 API의 목업 폴백을 적용하지 않는다.
+서버 기록 삭제 API는 아직 정의하지 않았으며 브라우저 기록을 삭제하는 방식으로
+서버 삭제를 대신하지 않는다. `userId=1`은 공유 데모 규칙이지 인증이 아니다.
+
+설정·테스트·현재 단계의 제한은 `docs/RECORDS_API_INTEGRATION.md`를 참고한다.
