@@ -16,6 +16,7 @@ export function WizardStart({
   cta,
   onStart,
   children,
+  disabled,
 }: {
   icon: ReactNode;
   title: string;
@@ -23,6 +24,7 @@ export function WizardStart({
   cta: string;
   onStart: () => void;
   children?: ReactNode;
+  disabled?: boolean;
 }) {
   return (
     <div className="pc-rise flex min-h-[60vh] flex-col justify-center py-4">
@@ -37,8 +39,9 @@ export function WizardStart({
       {children ? <div className="mt-5">{children}</div> : null}
 
       <Button
+        disabled={disabled}
         onClick={onStart}
-        className="mt-8 h-14 w-full rounded-2xl bg-gradient-to-r from-primary to-[#1D4A88] text-primary-foreground text-base font-bold shadow-lg shadow-primary/20 hover:shadow-primary/30 hover:scale-[1.01] active:scale-[0.99] transition-all"
+        className="mt-8 h-14 w-full rounded-2xl bg-gradient-to-r from-primary to-[#1D4A88] text-primary-foreground text-base font-bold shadow-lg shadow-primary/20 hover:shadow-primary/30 hover:scale-[1.01] active:scale-[0.99] transition-all disabled:opacity-50 disabled:pointer-events-none disabled:hover:scale-100"
       >
         {cta}
         <ArrowRight className="ml-2 size-5" />
