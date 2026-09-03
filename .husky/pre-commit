@@ -1,4 +1,11 @@
 #!/bin/sh
 
-pnpm biome format . --write
-pnpm biome check .
+files=$(git diff --cached --name-only --diff-filter=ACMR -- '*.ts' '*.tsx' '*.js' '*.jsx' '*.mjs' '*.cjs' '*.json' '*.css')
+
+if [ -z "$files" ]; then
+  exit 0
+fi
+
+echo "$files" | xargs pnpm biome format --write
+echo "$files" | xargs git add
+echo "$files" | xargs pnpm biome check

@@ -39,3 +39,9 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# 참고용 리소스
+/reference-react
+
+# Claude Code local settings (개인 전용, 공유 안 함)
+.claude/settings.local.json
