@@ -793,20 +793,36 @@ export default function PayCheckPage() {
       employment: state.employment,
     });
 
-    // 캘린더에 급여 확인 일정 자동 등록
+    // 캘린더에 급여 확인 일정 등록
     const eventDate = docs.deposit?.fields.payDate?.slice(0, 10) || `${period}-25`;
+    const todayStr = new Date().toISOString().slice(0, 10);
     const isNormal = result.overallStatus === "MATCH";
+
+    // 1. 분석 당일(오늘) 점검 완료 핀
     addEvent({
-      title: `${monthLabel(period)} 급여 확인 (${won(depositNet)})`,
+      title: `${monthLabel(period)} 급여 점검 완료 (${won(depositNet)})`,
       type: "PAYCHECK",
-      date: eventDate,
+      date: todayStr,
       time: "09:00",
       description: `${state.employment?.workplace || "근무지"} ${period} 급여 ${
         isNormal ? "정상 입금 확인" : "차액 확인 필요"
       }`,
-      completed: true,
+      completed: false,
       auto: true,
     });
+
+    // 2. 급여 입금일 일정 유지
+    if (eventDate !== todayStr) {
+      addEvent({
+        title: `${monthLabel(period)} 급여 입금 (${won(depositNet)})`,
+        type: "PAYCHECK",
+        date: eventDate,
+        time: "09:00",
+        description: `${state.employment?.workplace || "근무지"} ${period} 정기 급여 입금`,
+        completed: false,
+        auto: true,
+      });
+    }
 
     // 백엔드 생성 캘린더 일정 및 분석 결과 동기화
     void refreshFromBackend();

@@ -139,6 +139,18 @@ export default function ExitCheckPage() {
           hasRecentPayslip: localProfile.hasRecentPayslip,
         }).catch(() => {});
 
+        // 0. 분석 당일(오늘) 출국 점검 완료 핀
+        const todayStr = new Date().toISOString().slice(0, 10);
+        addEvent({
+          title: '출국 정산 점검 완료',
+          type: 'EXIT',
+          date: todayStr,
+          time: '09:00',
+          description: '출국 전 퇴직금 및 보험 점검 완료',
+          completed: false,
+          auto: true,
+        });
+
         // 출국 관련 캘린더 일정 등록
         if (departureDate) {
           // 1. 출국 D-30 퇴직금 및 출국만기보험 신청 기한

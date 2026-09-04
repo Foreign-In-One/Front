@@ -227,6 +227,20 @@ export default function TaxCheckPage() {
         setSavedUrl(data.taxCheckId);
 
         // 연말정산 서류 제출 기한 캘린더 일정 등록 (익년 1월 25일)
+        const todayStr = new Date().toISOString().slice(0, 10);
+
+        // 1. 분석 당일(오늘) 세무 점검 완료 핀
+        addEvent({
+          title: `${form.taxYear}년 귀속 세무 점검 완료`,
+          type: 'TAX',
+          date: todayStr,
+          time: '09:00',
+          description: '연말정산 소득·세액공제 준비 점검 완료',
+          completed: false,
+          auto: true,
+        });
+
+        // 2. 연말정산 서류 제출 기한 캘린더 일정 등록 (익년 1월 25일)
         const nextYear = form.taxYear + 1;
         const taxDate = `${nextYear}-01-25`;
         const eventTitle = `${form.taxYear}년 귀속 연말정산 서류 제출 기한`;
