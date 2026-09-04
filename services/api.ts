@@ -604,3 +604,40 @@ export async function chatAssistantApi(
   );
   return { data: res.data, isMock: res.isMock };
 }
+
+/** ExitCheck 분석 요청 DTO */
+export interface ExitCheckAnalyzeRequestDto {
+  expectedExitDate?: string;
+  hasInsuranceRecord?: boolean | null;
+  hasOwnAccount?: boolean | null;
+  hasExitProof?: boolean | null;
+  pensionDeducted?: boolean | null;
+  hasRecentPayslip?: boolean | null;
+  exitDocumentId?: number;
+}
+
+/** ExitCheck 분석 응답 DTO */
+export interface ExitCheckResponseDto {
+  exitCheckId: number;
+  expectedExitDate: string;
+  workDurationMonths: number;
+  insuranceStatus: string;
+  pensionStatus: string;
+  retirementStatus: string;
+  readinessScore: number;
+  status: string;
+  analysisSummary: string;
+  nextAction: string;
+}
+
+/** 출국 정산 분석 API (`POST /api/exit-checks/analyze`) */
+export async function analyzeExitCheckApi(
+  payload: ExitCheckAnalyzeRequestDto,
+): Promise<{ data: ExitCheckResponseDto; isMock: boolean }> {
+  const res = await fetchApi<ExitCheckResponseDto>(
+    '/api/exit-checks/analyze',
+    { method: 'POST', body: JSON.stringify(payload) },
+  );
+  return { data: res.data, isMock: false };
+}
+
