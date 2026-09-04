@@ -185,6 +185,7 @@ test('render original record year, saved text and escaped HTML', () => {
   };
   const html = render(ready({}, { latestTaxCheck: tax, recentRecords: [tax] }));
   assert.ok(html.includes('귀속연도: 2025'));
+  assert.ok(html.includes('href="/taxcheck?taxCheckId=1"'));
   assert.ok(html.includes('2026.09.02'));
   assert.ok(html.includes('TAX_CHECK:1'));
   assert.ok(html.includes('저장된 다음 행동'));
