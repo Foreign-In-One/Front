@@ -258,30 +258,14 @@ export async function getProfileApi(): Promise<{
   profile: ProfileResponseDto;
   isMock: boolean;
 }> {
-  const fallbackProfile: ProfileResponseDto = {
-    userId: 1,
-    name: '민수',
-    phone: '010-1234-5678',
-    nationality: '베트남',
-    visaType: 'E-9',
-    entryDate: '2025-03-01',
-    employmentStatus: 'WORKING',
-    companyName: '한국정밀',
-    workStartDate: '2025-03-10',
-    payday: 25,
-    expectedExitDate: '2027-03-01',
-    language: 'ko',
-  };
-
   const res = await fetchApi<ProfileResponseDto>(
     '/api/profile',
     { method: 'GET' },
-    fallbackProfile,
   );
 
   return {
     profile: res.data,
-    isMock: res.isMock,
+    isMock: false,
   };
 }
 
@@ -289,27 +273,11 @@ export async function getProfileApi(): Promise<{
 export async function updateProfileApi(
   payload: ProfileUpdateRequestDto,
 ): Promise<{ success: boolean; data?: ProfileResponseDto; isMock: boolean }> {
-  const fallbackProfile: ProfileResponseDto = {
-    userId: 1,
-    name: payload.name || '민수',
-    phone: '010-1234-5678',
-    nationality: payload.nationality || '베트남',
-    visaType: payload.visaType || 'E-9',
-    entryDate: payload.entryDate ?? '2025-03-01',
-    employmentStatus: payload.employmentStatus || 'WORKING',
-    companyName: payload.companyName || '한국정밀',
-    workStartDate: payload.workStartDate ?? '2025-03-10',
-    payday: payload.payday ?? 25,
-    expectedExitDate: payload.expectedExitDate ?? '2027-03-01',
-    language: payload.language || 'ko',
-  };
-
   const res = await fetchApi<ProfileResponseDto>(
     '/api/profile',
     { method: 'PATCH', body: JSON.stringify(payload) },
-    fallbackProfile,
   );
-  return { success: true, data: res.data, isMock: res.isMock };
+  return { success: true, data: res.data, isMock: false };
 }
 
 /** 캘린더 이벤트 백엔드 조회 (`GET /api/calendar/events`) */
@@ -320,31 +288,14 @@ export async function getCalendarEventsApi(
   events: CalendarEventResponseDto[];
   isMock: boolean;
 }> {
-  const fallbackEvents: CalendarEventResponseDto[] = [
-    {
-      eventId: 1,
-      title: '정기 급여일',
-      eventType: 'PAYDAY',
-      startAt: '2026-08-25T09:00:00',
-      description: '월급 입금 예정일',
-    },
-    {
-      eventId: 2,
-      title: '비자 만료 및 예상 출국',
-      eventType: 'EXIT',
-      startAt: '2027-03-01T00:00:00',
-      description: '체류 기간 만료 예정',
-    },
-  ];
-
   const query = from && to ? `?from=${from}&to=${to}` : '';
   const res = await fetchApi<CalendarEventResponseDto[]>(
     `/api/calendar/events${query}`,
     { method: 'GET' },
-    fallbackEvents,
+    [],
   );
 
-  return { events: res.data, isMock: res.isMock };
+  return { events: res.data || [], isMock: false };
 }
 
 /** PayCheck 검증 기록 조회 (`GET /api/paychecks`) */
@@ -368,32 +319,11 @@ export async function getPaychecksApi(
 export async function analyzePaycheckApi(
   payload: PaycheckAnalyzeRequestDto,
 ): Promise<{ paycheck: PaycheckResponseDto; isMock: boolean }> {
-  const isMatch = (payload.differenceAmount ?? 0) === 0;
-  const fallbackPaycheck: PaycheckResponseDto = {
-    paycheckId: Date.now(),
-    payPeriod: payload.payPeriod,
-    contractAmount: payload.contractAmount ?? 2500000,
-    payslipAmount: payload.payslipAmount ?? 2380000,
-    actualAmount: payload.actualAmount ?? 2260000,
-    differenceAmount: payload.differenceAmount ?? 0,
-    expectedPaymentDate:
-      payload.expectedPaymentDate ?? `${payload.payPeriod}-25`,
-    paymentDate: payload.paymentDate ?? `${payload.payPeriod}-25T09:14:00`,
-    status: isMatch ? 'NORMAL' : 'EXPLANATION_REQUIRED',
-    analysisSummary: isMatch
-      ? '근로계약서, 임금명세서, 통장 입금액이 정상 일치합니다.'
-      : `임금명세서 대비 ${Math.abs(payload.differenceAmount || 0).toLocaleString()}원의 차액이 확인되었습니다.`,
-    nextAction: isMatch
-      ? '특이사항이 없습니다.'
-      : '명세서 공제 항목 확인 및 사업주에게 확인 질문 카드를 전달하세요.',
-  };
-
   const res = await fetchApi<PaycheckResponseDto>(
     '/api/paychecks/analyze',
     { method: 'POST', body: JSON.stringify(payload) },
-    fallbackPaycheck,
   );
-  return { paycheck: res.data, isMock: res.isMock };
+  return { paycheck: res.data, isMock: false };
 }
 
 /** PayCheck AI 이상징후 원인 설명 및 사장님 질문카드 생성 (`POST /api/paychecks/{paycheckId}/explain`) */
@@ -409,39 +339,14 @@ export async function explainPaycheckApi(
   data: PaycheckExplainResponseDto;
   isMock: boolean;
 }> {
-  const fallbackExplain: PaycheckExplainResponseDto = {
-    paycheckId,
-    caseType: 'SALARY_DECREASE',
-    summary: '급여 대조 결과 차액이 확인되었습니다.',
-    reasons: [
-      '기본급 및 수당 계산 차이 가능성',
-      '임금명세서 상 공제 항목 추가 발생',
-    ],
-    nextActions: [
-      '임금명세서 세부 내역 확인',
-      '회사 급여 담당자에게 문의 카드 발송',
-    ],
-    employerQuestionCards: [
-      {
-        language: options?.locale || 'vi',
-        title: '급여 차액 확인 요청',
-        koreanScript:
-          '안녕하세요 사장님, 이번 달 급여명세서와 통장 입금액에 차이가 있어 확인 부탁드립니다.',
-        nativeScript:
-          'Xin chào giám đốc, có sự chênh lệch giữa phiếu lương và tiền vào tài khoản, nhờ giám đốc kiểm tra giúp tôi.',
-      },
-    ],
-  };
-
   const res = await fetchApi<PaycheckExplainResponseDto>(
     `/api/paychecks/${paycheckId}/explain`,
     {
       method: 'POST',
       body: JSON.stringify(options || {}),
     },
-    fallbackExplain,
   );
-  return { data: res.data, isMock: res.isMock };
+  return { data: res.data, isMock: false };
 }
 
 /** 1) 문서 업로드 API (`POST /api/documents`) */
@@ -462,32 +367,20 @@ export async function uploadDocumentApi(
       body: formData,
     });
 
-    if (res.ok) {
-      const json = await res.json();
-      if (
-        json &&
-        typeof json === 'object' &&
-        'success' in json &&
-        'data' in json
-      ) {
-        return { data: json.data as DocumentUploadResponseDto, isMock: false };
-      }
-      return { data: json as DocumentUploadResponseDto, isMock: false };
+    if (!res.ok) {
+      throw new Error(`Failed to upload document: ${res.status} ${res.statusText}`);
     }
-  } catch {
-    /* Fallback */
-  }
 
-  return {
-    data: {
-      documentId: Date.now(),
-      fileName: file.name,
-      documentType,
-      ocrStatus: 'PENDING',
-      createdAt: new Date().toISOString(),
-    },
-    isMock: true,
-  };
+    const json = await res.json();
+    const data =
+      json && typeof json === 'object' && 'success' in json && 'data' in json
+        ? (json.data as DocumentUploadResponseDto)
+        : (json as DocumentUploadResponseDto);
+
+    return { data, isMock: false };
+  } catch (err) {
+    throw err instanceof Error ? err : new Error('Document upload failed');
+  }
 }
 
 /** 2) OCR 실행 및 필드 추출 API (`POST /api/documents/{documentId}/ocr`) */
@@ -495,26 +388,11 @@ export async function runDocumentOcrApi(documentId: number): Promise<{
   data: DocumentOcrResponseDto;
   isMock: boolean;
 }> {
-  const fallbackOcr: DocumentOcrResponseDto = {
-    documentId,
-    ocrStatus: 'SUCCESS',
-    extractedData: {
-      payPeriod: '2026-08',
-      baseSalary: 2300000,
-      overtimeAllowance: 180000,
-      deduction: 0,
-      netPay: 2380000,
-      companyName: '한국정밀',
-      paymentDate: '2026-08-25',
-    },
-  };
-
   const res = await fetchApi<DocumentOcrResponseDto>(
     `/api/documents/${documentId}/ocr`,
     { method: 'POST' },
-    fallbackOcr,
   );
-  return { data: res.data, isMock: res.isMock };
+  return { data: res.data, isMock: false };
 }
 
 /** 3) OCR 추출 데이터 수정 API (`PATCH /api/documents/{documentId}/extracted-data`) */
@@ -522,20 +400,14 @@ export async function updateDocumentExtractedDataApi(
   documentId: number,
   extractedData: DocumentOcrExtractedDataDto,
 ): Promise<{ data: DocumentOcrResponseDto; isMock: boolean }> {
-  const fallbackOcr: DocumentOcrResponseDto = {
-    documentId,
-    ocrStatus: 'SUCCESS',
-    extractedData,
-  };
   const res = await fetchApi<DocumentOcrResponseDto>(
     `/api/documents/${documentId}/extracted-data`,
     {
       method: 'PATCH',
       body: JSON.stringify({ extractedData }),
     },
-    fallbackOcr,
   );
-  return { data: res.data, isMock: res.isMock };
+  return { data: res.data, isMock: false };
 }
 
 /** 캘린더 개인 일정 등록 (`POST /api/calendar/events`) */
@@ -548,17 +420,16 @@ export async function createCalendarEventApi(payload: {
   sourceType?: string;
   sourceId?: number;
 }): Promise<{ data: CalendarEventResponseDto; isMock: boolean }> {
-  const fallbackEvent: CalendarEventResponseDto = {
-    eventId: Date.now(),
+  const bodyPayload = {
     ...payload,
+    endAt: payload.endAt || payload.startAt,
   };
 
   const res = await fetchApi<CalendarEventResponseDto>(
     '/api/calendar/events',
-    { method: 'POST', body: JSON.stringify(payload) },
-    fallbackEvent,
+    { method: 'POST', body: JSON.stringify(bodyPayload) },
   );
-  return { data: res.data, isMock: res.isMock };
+  return { data: res.data, isMock: false };
 }
 
 /** 캘린더 일정 수정 (`PATCH /api/calendar/events/{eventId}`) */
@@ -566,20 +437,11 @@ export async function updateCalendarEventApi(
   eventId: number,
   payload: Partial<CalendarEventResponseDto>,
 ): Promise<{ data: CalendarEventResponseDto; isMock: boolean }> {
-  const fallbackEvent: CalendarEventResponseDto = {
-    eventId,
-    title: payload.title || '일정',
-    eventType: payload.eventType || 'PERSONAL',
-    startAt: payload.startAt || '2026-08-25T09:00:00',
-    description: payload.description,
-  };
-
   const res = await fetchApi<CalendarEventResponseDto>(
     `/api/calendar/events/${eventId}`,
     { method: 'PATCH', body: JSON.stringify(payload) },
-    fallbackEvent,
   );
-  return { data: res.data, isMock: res.isMock };
+  return { data: res.data, isMock: false };
 }
 
 /** 캘린더 일정 삭제 (`DELETE /api/calendar/events/{eventId}`) */

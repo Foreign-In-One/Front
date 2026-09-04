@@ -1,5 +1,4 @@
 import {
-  readDocumentOcrApi,
   uploadDocumentApi,
   runDocumentOcrApi,
   type DocumentTypeEnum,
@@ -90,19 +89,22 @@ export async function readDocument(input: {
         message: `${file.name} OCR 판독이 완료되었습니다.`,
       };
     } catch (err) {
-      console.warn("Real document OCR failed, falling back to local extractor:", err);
+      console.error("Document OCR failed:", err);
+      return {
+        ok: false,
+        mock: false,
+        fields: emptyFields(period),
+        confidence: "low",
+        message: err instanceof Error ? err.message : "문서 판독에 실패했습니다.",
+      };
     }
   }
 
-  // 2. Mock 또는 fallback 판독
-  const res = await readDocumentOcrApi({ kind, dataUrl, period });
-
   return {
-    ok: res.ok,
-    mock: res.mock,
-    fields: res.fields,
-    candidateAmounts: res.candidateAmounts,
-    confidence: res.confidence,
-    message: res.message,
+    ok: false,
+    mock: false,
+    fields: emptyFields(period),
+    confidence: "low",
+    message: "업로드된 문서가 없습니다.",
   };
 }
