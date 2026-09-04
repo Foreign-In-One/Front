@@ -130,145 +130,7 @@ function isCandidateRecommended(kind: DocKind, label: string): boolean {
   return false;
 }
 
-/** 백엔드 미동작 시 제공할 명시적 최근 2개월치 Fallback Mock 급여 확인 기록 */
-const MOCK_FALLBACK_RECORDS: PayRecord[] = [
-  {
-    id: "pay-mock-2025-03",
-    period: "2025-03",
-    workplace: "(주)페이사이클 제이이노베이션",
-    checkedAt: "2025-03-25",
-    paidAmount: 2050000,
-    documents: {
-      contract: {
-        kind: "contract",
-        source: "sample",
-        fileName: "contract-sample.png",
-        fields: { period: "2025-03", basePay: 2100000, allowances: null, deductions: null, netPay: 2100000, payDay: 25, payDate: null },
-        confirmed: true,
-        masked: false,
-        note: "계약 기본급 2,100,000원 확인",
-      },
-      statement: {
-        kind: "statement",
-        source: "sample",
-        fileName: "statement-sample.png",
-        fields: { period: "2025-03", basePay: 2100000, allowances: null, deductions: null, netPay: 2100000, payDay: null, payDate: "2025-03-25" },
-        confirmed: true,
-        masked: false,
-        note: "명세서 실지급액 2,100,000원 확인",
-      },
-      deposit: {
-        kind: "deposit",
-        source: "sample",
-        fileName: "deposit-sample.png",
-        fields: { period: "2025-03", basePay: null, allowances: null, deductions: null, netPay: 2050000, payDay: null, payDate: "2025-03-25" },
-        confirmed: true,
-        masked: false,
-        note: "실지급 입금액 2,050,000원 확인",
-      },
-    },
-    analysis: {
-      overallStatus: "EXPLANATION_REQUIRED",
-      headline: "명세서 실지급액과 입금액 간 50,000원 차이 발생",
-      detail: "근로기준법 기준 3중 대조 결과 차액 50,000원에 대한 설명이 필요합니다.",
-      steps: [
-        { label: "근로계약서 확인", ok: true, detail: "기본급 2,100,000원 대조 완료" },
-        { label: "임금명세서 판독", ok: true, detail: "실지급액 2,100,000원 대조 완료" },
-        { label: "실입금액 대조", ok: false, detail: "통장 실입금액 2,050,000원 (50,000원 차이)" },
-      ],
-      findings: [
-        {
-          id: "net",
-          status: "EXPLANATION_REQUIRED",
-          title: "명세서와 실제 입금액 차이",
-          fact: "임금명세서의 실지급액은 2,100,000원인데 실제 입금액은 2,050,000원으로 50,000원의 차액이 발생했습니다.",
-          standard: "근로기준법 제43조(임금 지급)",
-          limitation: "별도 차액 공제 항목이 명세서에 기록되어 있지 않습니다.",
-          nextActions: ["사업주에게 차액 산정 근거 확인 요청", "추가 공제 내역 서면 요청"],
-          comparison: "EXPLANATION_REQUIRED",
-          left: { label: "임금명세서 실지급액", amount: 2100000 },
-          right: { label: "통장 실입금액", amount: 2050000 },
-          difference: -50000,
-          requiredEvidence: ["임금명세서", "통장 거래내역"],
-          sources: ["statement", "deposit"],
-          evidence: [],
-        },
-      ],
-      rows: [
-        { item: "기본급", contract: "2,100,000원", statement: "2,100,000원", deposit: "—", result: "2,100,000원 일치", status: "MATCH" },
-        { item: "실지급액", contract: "—", statement: "2,100,000원", deposit: "2,050,000원", result: "50,000원 차이 발생", status: "EXPLANATION_REQUIRED" },
-      ],
-    },
-  },
-  {
-    id: "pay-mock-2025-02",
-    period: "2025-02",
-    workplace: "(주)페이사이클 제이이노베이션",
-    checkedAt: "2025-02-25",
-    paidAmount: 2100000,
-    documents: {
-      contract: {
-        kind: "contract",
-        source: "sample",
-        fileName: "contract-sample.png",
-        fields: { period: "2025-02", basePay: 2100000, allowances: null, deductions: null, netPay: 2100000, payDay: 25, payDate: null },
-        confirmed: true,
-        masked: false,
-        note: "계약 기본급 2,100,000원 확인",
-      },
-      statement: {
-        kind: "statement",
-        source: "sample",
-        fileName: "statement-sample.png",
-        fields: { period: "2025-02", basePay: 2100000, allowances: null, deductions: null, netPay: 2100000, payDay: null, payDate: "2025-02-25" },
-        confirmed: true,
-        masked: false,
-        note: "명세서 실지급액 2,100,000원 확인",
-      },
-      deposit: {
-        kind: "deposit",
-        source: "sample",
-        fileName: "deposit-sample.png",
-        fields: { period: "2025-02", basePay: null, allowances: null, deductions: null, netPay: 2100000, payDay: null, payDate: "2025-02-25" },
-        confirmed: true,
-        masked: false,
-        note: "실지급 입금액 2,100,000원 확인",
-      },
-    },
-    analysis: {
-      overallStatus: "MATCH",
-      headline: "2025년 2월 급여 100% 정상 대조 완수",
-      detail: "계약서 및 명세서, 실제 입금액이 완벽히 일치하여 정상 지급되었습니다.",
-      steps: [
-        { label: "근로계약서 확인", ok: true, detail: "기본급 2,100,000원 일치" },
-        { label: "임금명세서 판독", ok: true, detail: "실지급액 2,100,000원 일치" },
-        { label: "실입금액 대조", ok: true, detail: "통장 실입금액 2,100,000원 100% 일치" },
-      ],
-      findings: [
-        {
-          id: "base",
-          status: "MATCH",
-          title: "계약서, 명세서, 입금액 100% 일치",
-          fact: "2025년 2월 급여가 계약서 및 임금명세서 기준과 정확히 일치하여 정상 지급되었습니다.",
-          standard: "근로기준법 준수",
-          limitation: "이상 특이사항 없음",
-          nextActions: ["정상 확인 저장 완료"],
-          comparison: "MATCH",
-          left: { label: "계약 기본급", amount: 2100000 },
-          right: { label: "통장 실입금액", amount: 2100000 },
-          difference: 0,
-          requiredEvidence: [],
-          sources: ["contract", "statement", "deposit"],
-          evidence: [],
-        },
-      ],
-      rows: [
-        { item: "기본급", contract: "2,100,000원", statement: "2,100,000원", deposit: "2,100,000원", result: "정상 일치", status: "MATCH" },
-        { item: "실지급액", contract: "2,100,000원", statement: "2,100,000원", deposit: "2,100,000원", result: "정상 일치", status: "MATCH" },
-      ],
-    },
-  },
-];
+
 
 function defaultDoc(kind: DocKind, period: string): PayDocument {
   return {
@@ -562,7 +424,7 @@ export default function PayCheckPage() {
     if (state.payRecords && state.payRecords.length > 0) {
       return [...state.payRecords].sort((a, b) => (b.period || "").localeCompare(a.period || ""));
     }
-    return MOCK_FALLBACK_RECORDS;
+    return [];
   }, [state.payRecords]);
 
   const finding: PayFinding | null = useMemo(() => {
@@ -931,20 +793,36 @@ export default function PayCheckPage() {
       employment: state.employment,
     });
 
-    // 캘린더에 급여 확인 일정 자동 등록
+    // 캘린더에 급여 확인 일정 등록
     const eventDate = docs.deposit?.fields.payDate?.slice(0, 10) || `${period}-25`;
+    const todayStr = new Date().toISOString().slice(0, 10);
     const isNormal = result.overallStatus === "MATCH";
+
+    // 1. 분석 당일(오늘) 점검 완료 핀
     addEvent({
-      title: `${monthLabel(period)} 급여 확인 (${won(depositNet)})`,
+      title: `${monthLabel(period)} 급여 점검 완료 (${won(depositNet)})`,
       type: "PAYCHECK",
-      date: eventDate,
+      date: todayStr,
       time: "09:00",
       description: `${state.employment?.workplace || "근무지"} ${period} 급여 ${
         isNormal ? "정상 입금 확인" : "차액 확인 필요"
       }`,
-      completed: true,
+      completed: false,
       auto: true,
     });
+
+    // 2. 급여 입금일 일정 유지
+    if (eventDate !== todayStr) {
+      addEvent({
+        title: `${monthLabel(period)} 급여 입금 (${won(depositNet)})`,
+        type: "PAYCHECK",
+        date: eventDate,
+        time: "09:00",
+        description: `${state.employment?.workplace || "근무지"} ${period} 정기 급여 입금`,
+        completed: false,
+        auto: true,
+      });
+    }
 
     // 백엔드 생성 캘린더 일정 및 분석 결과 동기화
     void refreshFromBackend();
@@ -1024,69 +902,70 @@ export default function PayCheckPage() {
           </div>
         </WizardStart>
 
-        {/* 이전 급여 확인 기록 섹션 (백엔드 API 기본연동 + Mock Fallback) */}
+        {/* 이전 급여 확인 기록 섹션 (백엔드 API 연동) */}
         <section className="mt-8 space-y-3 pc-rise">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
               <History className="size-4 text-primary" />
               <h3 className="text-sm font-extrabold text-foreground">{t("pay.history.title")}</h3>
             </div>
-            {state.payRecords.length === 0 && (
-              <span className="rounded-full bg-primary/10 px-2.5 py-0.5 text-[10px] font-black text-primary">
-                {t("pay.history.mockBadge")}
-              </span>
-            )}
           </div>
 
           <div className="space-y-2.5">
-            {historyRecords.map((r) => {
-              const status = r.analysis?.overallStatus ?? "MATCH";
-              const isMatch = status === "MATCH";
-              const isEx = status === "EXPLANATION_REQUIRED";
+            {historyRecords.length === 0 ? (
+              <div className="rounded-3xl bg-card border border-border/70 p-8 text-center text-xs font-semibold text-muted-foreground shadow-xs backdrop-blur-md">
+                {t("pay.history.empty")}
+              </div>
+            ) : (
+              historyRecords.map((r) => {
+                const status = r.analysis?.overallStatus ?? "MATCH";
+                const isMatch = status === "MATCH";
+                const isEx = status === "EXPLANATION_REQUIRED";
 
-              return (
-                <button
-                  key={r.id}
-                  type="button"
-                  onClick={() => setSelectedRecord(r)}
-                  className="flex w-full items-center justify-between rounded-3xl bg-card border border-border/70 p-4 shadow-xs backdrop-blur-md transition-all hover:scale-[1.01] hover:border-primary/40 text-left"
-                >
-                  <div className="flex items-center gap-3">
-                    <div className="flex size-11 items-center justify-center rounded-2xl bg-primary/10 text-primary shadow-xs">
-                      <Receipt className="size-5" />
-                    </div>
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <span className="text-xs font-black text-foreground">
-                          {monthLabel(r.period)}
-                        </span>
-                        <span
-                          className={`rounded-full px-2 py-0.5 text-[10px] font-black ${
-                            isMatch
-                              ? "bg-info-soft text-info-foreground dark:text-info"
-                              : isEx
-                              ? "bg-warn-soft text-warn-foreground dark:text-warn"
-                              : "bg-destructive/15 text-destructive"
-                          }`}
-                        >
-                          {status}
-                        </span>
+                return (
+                  <button
+                    key={r.id}
+                    type="button"
+                    onClick={() => setSelectedRecord(r)}
+                    className="flex w-full items-center justify-between rounded-3xl bg-card border border-border/70 p-4 shadow-xs backdrop-blur-md transition-all hover:scale-[1.01] hover:border-primary/40 text-left"
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className="flex size-11 items-center justify-center rounded-2xl bg-primary/10 text-primary shadow-xs">
+                        <Receipt className="size-5" />
                       </div>
-                      <p className="mt-0.5 text-[11px] text-muted-foreground">
-                        {r.workplace || t("pay.history.noWorkplace")} · {t("pay.history.checkedDate", { date: formatKDate(r.checkedAt) })}
-                      </p>
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs font-black text-foreground">
+                            {monthLabel(r.period)}
+                          </span>
+                          <span
+                            className={`rounded-full px-2 py-0.5 text-[10px] font-black ${
+                              isMatch
+                                ? "bg-info-soft text-info-foreground dark:text-info"
+                                : isEx
+                                ? "bg-warn-soft text-warn-foreground dark:text-warn"
+                                : "bg-destructive/15 text-destructive"
+                            }`}
+                          >
+                            {status}
+                          </span>
+                        </div>
+                        <p className="mt-0.5 text-[11px] text-muted-foreground">
+                          {r.workplace || t("pay.history.noWorkplace")} · {t("pay.history.checkedDate", { date: formatKDate(r.checkedAt) })}
+                        </p>
+                      </div>
                     </div>
-                  </div>
 
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs font-black text-primary">
-                      {r.paidAmount ? won(r.paidAmount) : t("pay.history.noAmount")}
-                    </span>
-                    <Eye className="size-4 text-muted-foreground" />
-                  </div>
-                </button>
-              );
-            })}
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-black text-primary">
+                        {r.paidAmount ? won(r.paidAmount) : t("pay.history.noAmount")}
+                      </span>
+                      <Eye className="size-4 text-muted-foreground" />
+                    </div>
+                  </button>
+                );
+              })
+            )}
           </div>
         </section>
 

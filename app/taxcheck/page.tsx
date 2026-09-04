@@ -27,6 +27,7 @@ import {
   validateTaxForm,
 } from './taxcheck-form';
 import { TaxResultView } from './taxcheck-result';
+import { usePayCycle } from '@/state/paycycle-context';
 
 type PageError = TaxInputError | 'read' | 'write' | 'uncertain' | 'url';
 type Pending = 'read' | 'analyze' | 'simulate' | null;
@@ -76,6 +77,7 @@ function Question({
 
 export default function TaxCheckPage() {
   const { locale, t } = useT();
+  const { addEvent, refreshFromBackend } = usePayCycle();
   const copy = TAX_COPY[locale];
   const [step, setStep] = useState(-1);
   const [form, setForm] = useState<TaxForm>(() => emptyTaxForm());
@@ -223,6 +225,38 @@ export default function TaxCheckPage() {
         setScenario(null);
         setForm(formFromTax(data));
         setSavedUrl(data.taxCheckId);
+
+        // 연말정산 서류 제출 기한 캘린더 일정 등록 (익년 1월 25일)
+        const todayStr = new Date().toISOString().slice(0, 10);
+
+        // 1. 분석 당일(오늘) 세무 점검 완료 핀
+        addEvent({
+          title: `${form.taxYear}년 귀속 세무 점검 완료`,
+          type: 'TAX',
+          date: todayStr,
+          time: '09:00',
+          description: '연말정산 소득·세액공제 준비 점검 완료',
+          completed: false,
+          auto: true,
+        });
+
+        // 2. 연말정산 서류 제출 기한 캘린더 일정 등록 (익년 1월 25일)
+        const nextYear = form.taxYear + 1;
+        const taxDate = `${nextYear}-01-25`;
+        const eventTitle = `${form.taxYear}년 귀속 연말정산 서류 제출 기한`;
+        const eventDesc = '회사 연말정산 담당자에게 소득·세액공제 증빙 서류 제출';
+
+        addEvent({
+          title: eventTitle,
+          type: 'TAX',
+          date: taxDate,
+          time: '09:00',
+          description: eventDesc,
+          completed: false,
+          auto: true,
+        });
+
+        void refreshFromBackend();
       }
       setStep(3);
     } catch (cause) {

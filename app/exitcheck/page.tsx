@@ -17,16 +17,17 @@ import { toast } from 'sonner';
 import { AppShell } from '@/components/app-shell';
 import { Button } from '@/components/ui/button';
 import { useT } from '@/i18n';
-import { formatKDate } from '@/lib/paycycle/format';
+import { formatKDate, isoDate } from '@/lib/paycycle/format';
 import { saveExitCheckResult } from '@/lib/paycycle/result-storage';
 import { evaluateExit } from '@/lib/paycycle/rule-engine';
 import type { ExitClaim, ExitProfile } from '@/lib/paycycle/types';
 import { usePayCycle } from '@/state/paycycle-context';
+import { analyzeExitCheckApi } from '@/services/api';
 
 const STEP_TOTAL = 4;
 
 export default function ExitCheckPage() {
-  const { state, hydrated, updateExitProfile, signature } = usePayCycle();
+  const { state, hydrated, updateExitProfile, signature, addEvent, refreshFromBackend } = usePayCycle();
   const { t } = useT();
 
   const [step, setStep] = useState(-1);
@@ -114,7 +115,7 @@ export default function ExitCheckPage() {
     return true;
   }, [step, localProfile]);
 
-  // 결과 화면 도달 시 자동 저장
+  // 결과 화면 도달 시 자동 저장 및 캘린더 일정 동기화
   useEffect(() => {
     if (step === 3 && !savedRef.current && hydrated) {
       const res = saveExitCheckResult({
@@ -127,6 +128,64 @@ export default function ExitCheckPage() {
         savedRef.current = true;
         updateExitProfile(localProfile);
         toast.success(t('exit.saved'));
+
+        // 백엔드 ExitCheck 분석 및 저장
+        void analyzeExitCheckApi({
+          expectedExitDate: departureDate || undefined,
+          hasInsuranceRecord: localProfile.hasInsuranceRecord,
+          hasOwnAccount: localProfile.hasOwnAccount,
+          hasExitProof: localProfile.hasExitProof,
+          pensionDeducted: localProfile.pensionDeducted,
+          hasRecentPayslip: localProfile.hasRecentPayslip,
+        }).catch(() => {});
+
+        // 0. 분석 당일(오늘) 출국 점검 완료 핀
+        const todayStr = new Date().toISOString().slice(0, 10);
+        addEvent({
+          title: '출국 정산 점검 완료',
+          type: 'EXIT',
+          date: todayStr,
+          time: '09:00',
+          description: '출국 전 퇴직금 및 보험 점검 완료',
+          completed: false,
+          auto: true,
+        });
+
+        // 출국 관련 캘린더 일정 등록
+        if (departureDate) {
+          // 1. 출국 D-30 퇴직금 및 출국만기보험 신청 기한
+          const [y, m, d] = departureDate.split('-').map(Number);
+          const depDt = new Date(y, m - 1, d);
+          depDt.setDate(depDt.getDate() - 30);
+          const d30Iso = isoDate(depDt);
+
+          const d30Title = '출국만기보험 및 퇴직금 신청 기한';
+          const d30Desc = '출국 1개월 전 삼성화재 출국만기보험 신청 및 공항수령/계좌송금 접수';
+
+          addEvent({
+            title: d30Title,
+            type: 'EXIT',
+            date: d30Iso,
+            time: '10:00',
+            description: d30Desc,
+            completed: false,
+            auto: true,
+          });
+
+          // 2. 출국 당일 일정
+          const exitTitle = '예상 출국일';
+          const exitDesc = '체류기간 만료 및 공항 출국 / 출국만기보험 수령';
+
+          addEvent({
+            title: exitTitle,
+            type: 'EXIT',
+            date: departureDate,
+            time: '09:00',
+            description: exitDesc,
+            completed: false,
+            auto: true,
+          });
+        }
       }
     }
   }, [
@@ -138,6 +197,8 @@ export default function ExitCheckPage() {
     updateExitProfile,
     signature,
     hydrated,
+    addEvent,
+    refreshFromBackend,
     t,
   ]);
 

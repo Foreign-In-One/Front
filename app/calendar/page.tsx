@@ -304,7 +304,7 @@ export default function CalendarPage() {
 
                 <div className="w-full space-y-0.5 mt-1">
                   {dayEvents.slice(0, 2).map((evt) => {
-                    const meta = EVENT_META[evt.type];
+                    const meta = EVENT_META[evt.type] || EVENT_META.PERSONAL;
                     return (
                       <div
                         key={evt.id}
@@ -351,7 +351,7 @@ export default function CalendarPage() {
           </div>
         ) : (
           selectedDayEvents.map((evt) => {
-            const meta = EVENT_META[evt.type];
+            const meta = EVENT_META[evt.type] || EVENT_META.PERSONAL;
             const isDone = Boolean(evt.completed);
 
             return (
