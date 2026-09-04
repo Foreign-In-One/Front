@@ -22,7 +22,7 @@ import { saveExitCheckResult } from '@/lib/paycycle/result-storage';
 import { evaluateExit } from '@/lib/paycycle/rule-engine';
 import type { ExitClaim, ExitProfile } from '@/lib/paycycle/types';
 import { usePayCycle } from '@/state/paycycle-context';
-import { analyzeExitCheckApi, createCalendarEventApi } from '@/services/api';
+import { analyzeExitCheckApi } from '@/services/api';
 
 const STEP_TOTAL = 4;
 
@@ -160,15 +160,6 @@ export default function ExitCheckPage() {
             auto: true,
           });
 
-          void createCalendarEventApi({
-            title: d30Title,
-            eventType: 'EXIT',
-            startAt: `${d30Iso}T10:00:00`,
-            endAt: `${d30Iso}T18:00:00`,
-            description: d30Desc,
-            sourceType: 'SYSTEM',
-          }).catch(() => {});
-
           // 2. 출국 당일 일정
           const exitTitle = '예상 출국일';
           const exitDesc = '체류기간 만료 및 공항 출국 / 출국만기보험 수령';
@@ -182,17 +173,6 @@ export default function ExitCheckPage() {
             completed: false,
             auto: true,
           });
-
-          void createCalendarEventApi({
-            title: exitTitle,
-            eventType: 'EXIT',
-            startAt: `${departureDate}T09:00:00`,
-            endAt: `${departureDate}T18:00:00`,
-            description: exitDesc,
-            sourceType: 'SYSTEM',
-          }).then(() => {
-            void refreshFromBackend();
-          }).catch(() => {});
         }
       }
     }

@@ -28,7 +28,6 @@ import {
 } from './taxcheck-form';
 import { TaxResultView } from './taxcheck-result';
 import { usePayCycle } from '@/state/paycycle-context';
-import { createCalendarEventApi } from '@/services/api';
 
 type PageError = TaxInputError | 'read' | 'write' | 'uncertain' | 'url';
 type Pending = 'read' | 'analyze' | 'simulate' | null;
@@ -243,17 +242,7 @@ export default function TaxCheckPage() {
           auto: true,
         });
 
-        void createCalendarEventApi({
-          title: eventTitle,
-          eventType: 'TAX',
-          startAt: `${taxDate}T09:00:00`,
-          endAt: `${taxDate}T18:00:00`,
-          description: eventDesc,
-          sourceType: 'SYSTEM',
-          sourceId: data.taxCheckId ?? undefined,
-        }).then(() => {
-          void refreshFromBackend();
-        }).catch(() => {});
+        void refreshFromBackend();
       }
       setStep(3);
     } catch (cause) {
