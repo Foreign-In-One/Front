@@ -278,7 +278,11 @@ export default function DashboardPage() {
 
                 {/* 세금 (TaxCheck) 상태 카드 */}
                 <Link
-                  href="/taxcheck"
+                  href={
+                    data.latestTaxCheck
+                      ? `/taxcheck?taxCheckId=${data.latestTaxCheck.sourceId}`
+                      : '/taxcheck'
+                  }
                   className="group flex items-center justify-between rounded-3xl border border-border/80 bg-card p-4 shadow-sm transition-all hover:border-primary/40 hover:shadow-md active:scale-[0.99]"
                 >
                   <div className="flex min-w-0 flex-1 items-center gap-3">
