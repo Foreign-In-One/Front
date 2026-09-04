@@ -9,6 +9,7 @@ import {
   UserRound,
   Wallet,
 } from 'lucide-react';
+import Image from 'next/image';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { DemoSyncButton } from '@/components/demo-sync-button';
@@ -25,28 +26,33 @@ const TABS = [
 ] as const;
 
 interface NavbarProps {
-  title: string;
+  title?: string;
   subtitle?: string;
 }
 
-export function Navbar({ title, subtitle }: NavbarProps) {
+export function Navbar({ title: _title, subtitle: _subtitle }: NavbarProps = {}) {
   const pathname = usePathname();
   const { t } = useT();
 
   return (
     <>
-      <header className="sticky top-0 z-30 border-border/70 border-b bg-background/85 px-4 py-3.5 backdrop-blur sm:px-5">
+      <header className="sticky top-0 z-30 border-border/70 border-b bg-background/85 px-4 py-3 backdrop-blur sm:px-5">
         <div className="mx-auto flex max-w-xl items-center justify-between gap-2">
-          <div className="min-w-0 flex-1">
-            <h1 className="truncate font-bold text-foreground text-lg tracking-tight sm:text-xl">
-              {title}
-            </h1>
-
-            {subtitle ? (
-              <p className="truncate text-muted-foreground text-xs sm:text-sm">
-                {subtitle}
-              </p>
-            ) : null}
+          <div className="flex shrink-0 items-center">
+            <Link
+              href="/dashboard"
+              className="flex items-center transition-opacity hover:opacity-85 active:scale-95"
+              aria-label="Dashboard"
+            >
+              <Image
+                src="/logo.svg"
+                alt="Foreign In One"
+                width={138}
+                height={41}
+                className="h-8 w-auto object-contain sm:h-9"
+                priority
+              />
+            </Link>
           </div>
 
           <div className="flex shrink-0 items-center gap-1">
