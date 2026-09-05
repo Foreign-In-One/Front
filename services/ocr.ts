@@ -1,7 +1,6 @@
 import {
   uploadDocumentApi,
   runDocumentOcrApi,
-  readDocumentOcrApi,
   type DocumentTypeEnum,
   type CandidateAmountDto,
 } from "@/services/api";
@@ -90,15 +89,14 @@ export async function readDocument(input: {
         message: `${file.name} OCR 판독이 완료되었습니다.`,
       };
     } catch (err) {
-      console.warn("Backend Document OCR failed or offline, falling back to smart local OCR reader:", err);
-      const fallbackOcr = await readDocumentOcrApi({ kind, dataUrl, period });
+      console.error("Document OCR failed:", err);
       return {
-        ok: true,
-        mock: true,
-        fields: fallbackOcr.fields,
-        candidateAmounts: fallbackOcr.candidateAmounts,
-        confidence: fallbackOcr.confidence,
-        message: `${file.name} 판독이 완료되었습니다. 필요시 값을 확인해 주세요.`,
+        ok: false,
+        mock: false,
+        fields: emptyFields(period),
+        candidateAmounts: [],
+        confidence: "low",
+        message: err instanceof Error ? err.message : "문서 판독에 실패했습니다. 직접 입력해 주세요.",
       };
     }
   }

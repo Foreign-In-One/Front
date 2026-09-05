@@ -361,16 +361,30 @@ export async function uploadDocumentApi(
     formData.append('file', file);
     formData.append('documentType', documentType);
 
-    const res = await fetch(`${BASE_URL}/api/documents`, {
-      method: 'POST',
-      headers: {
-        'X-Demo-User-Id': '1',
-      },
-      body: formData,
-    });
+    // 1) 브라우저에서는 Next.js 내부 API 프록시(/api/documents) 우선 호출 (CORS 완전 회피)
+    let res: Response;
+    try {
+      res = await fetch('/api/documents', {
+        method: 'POST',
+        headers: {
+          'X-Demo-User-Id': '1',
+        },
+        body: formData,
+      });
+    } catch {
+      // 2) 프록시 실패 시 백엔드 BASE_URL 직접 호출
+      res = await fetch(`${BASE_URL}/api/documents`, {
+        method: 'POST',
+        headers: {
+          'X-Demo-User-Id': '1',
+        },
+        body: formData,
+      });
+    }
 
     if (!res.ok) {
-      throw new Error(`Failed to upload document: ${res.status} ${res.statusText}`);
+      const errText = await res.text().catch(() => res.statusText);
+      throw new Error(`Failed to upload document: ${res.status} ${errText}`);
     }
 
     const json = await res.json();
@@ -390,10 +404,20 @@ export async function runDocumentOcrApi(documentId: number): Promise<{
   data: DocumentOcrResponseDto;
   isMock: boolean;
 }> {
-  const res = await fetchApi<DocumentOcrResponseDto>(
-    `/api/documents/${documentId}/ocr`,
-    { method: 'POST' },
-  );
+  let res;
+  try {
+    // 1) Next.js 프록시 우선 시도
+    res = await fetchApi<DocumentOcrResponseDto>(
+      `/api/documents/${documentId}/ocr`,
+      { method: 'POST' },
+    );
+  } catch {
+    // 2) 백엔드 직접 시도
+    res = await fetchApi<DocumentOcrResponseDto>(
+      `${BASE_URL}/api/documents/${documentId}/ocr`,
+      { method: 'POST' },
+    );
+  }
   return { data: res.data, isMock: false };
 }
 
@@ -402,13 +426,24 @@ export async function updateDocumentExtractedDataApi(
   documentId: number,
   extractedData: DocumentOcrExtractedDataDto,
 ): Promise<{ data: DocumentOcrResponseDto; isMock: boolean }> {
-  const res = await fetchApi<DocumentOcrResponseDto>(
-    `/api/documents/${documentId}/extracted-data`,
-    {
-      method: 'PATCH',
-      body: JSON.stringify({ extractedData }),
-    },
-  );
+  let res;
+  try {
+    res = await fetchApi<DocumentOcrResponseDto>(
+      `/api/documents/${documentId}/extracted-data`,
+      {
+        method: 'PATCH',
+        body: JSON.stringify({ extractedData }),
+      },
+    );
+  } catch {
+    res = await fetchApi<DocumentOcrResponseDto>(
+      `${BASE_URL}/api/documents/${documentId}/extracted-data`,
+      {
+        method: 'PATCH',
+        body: JSON.stringify({ extractedData }),
+      },
+    );
+  }
   return { data: res.data, isMock: false };
 }
 
@@ -516,55 +551,18 @@ export async function getMockBankTransactionsApi(
   return { transactions: res.data, isMock: res.isMock };
 }
 
-/** OCR 판독 API 서비스 */
+/** OCR 판독 API 서비스 (가짜 목업 데이터 완전 제거) */
 export async function readDocumentOcrApi(
   req: OcrRequestDto,
 ): Promise<OcrResponseDto> {
   const base = emptyFields(req.period);
-  let mockFields: DocFields = base;
-  let candidates: CandidateAmountDto[] = [];
-
-  if (req.kind === 'contract') {
-    mockFields = { ...base, basePay: 2_200_000, allowances: 0, payDay: 25 };
-    candidates = [
-      { label: '기본급', amount: 2_200_000, targetField: 'basePay' },
-      { label: '식대보조', amount: 150_000, targetField: 'allowances' },
-      { label: '월급여총액', amount: 2_350_000 },
-    ];
-  } else if (req.kind === 'statement') {
-    mockFields = {
-      ...base,
-      basePay: 2_200_000,
-      allowances: 380_000,
-      deductions: 200_000,
-      netPay: 2_380_000,
-      payDate: payDayIso(req.period, 25),
-    };
-    candidates = [
-      { label: '기본급', amount: 2_200_000, targetField: 'basePay' },
-      { label: '연장근로수당', amount: 380_000, targetField: 'allowances' },
-      { label: '지급총액', amount: 2_580_000 },
-      { label: '공제총액', amount: 200_000, targetField: 'deductions' },
-      { label: '실지급액', amount: 2_380_000, targetField: 'netPay' },
-    ];
-  } else {
-    mockFields = {
-      ...base,
-      netPay: 2_260_000,
-      payDate: payDayIso(req.period, 27),
-    };
-    candidates = [
-      { label: '실입금액', amount: 2_260_000, targetField: 'netPay' },
-    ];
-  }
-
   return {
-    ok: true,
-    mock: true,
+    ok: false,
+    mock: false,
     confidence: 'low',
-    message: '판독이 완료되었습니다. 필요시 값을 수정해 주세요.',
-    fields: mockFields,
-    candidateAmounts: candidates,
+    message: '문서 OCR 판독 데이터가 없습니다. 직접 입력해 주세요.',
+    fields: base,
+    candidateAmounts: [],
   };
 }
 
