@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { CalendarClock, Globe, Trash2, UserRound } from "lucide-react";
@@ -22,6 +22,21 @@ import { useT, LOCALES, type UiLocale } from "@/i18n";
 import { VISA_CODES, visaInfo } from "@/i18n/visa";
 import { dDay } from "@/lib/paycycle/rule-engine";
 import type { EmploymentStatus } from "@/lib/paycycle/types";
+
+const BASE_NATIONALITIES = [
+  "베트남",
+  "캄보디아",
+  "태국",
+  "인도네시아",
+  "네팔",
+  "필리핀",
+  "미얀마",
+  "몽골",
+  "스리랑카",
+  "우즈베키스탄",
+  "중국",
+  "방글라데시",
+];
 
 const STATUSES: EmploymentStatus[] = ["PRE_EMPLOYMENT", "EMPLOYED", "SEPARATED", "CHANGING"];
 
@@ -71,6 +86,14 @@ export default function ProfilePage() {
   const exitIso =
     employment.exitDate.value && !employment.exitDate.unknown ? employment.exitDate.value : null;
 
+  const nationalityOptions = useMemo(() => {
+    const list = [...BASE_NATIONALITIES];
+    if (profile?.nationality && !list.includes(profile.nationality)) {
+      list.push(profile.nationality);
+    }
+    return list;
+  }, [profile?.nationality]);
+
   return (
     <AppShell title={t("profile.title")} subtitle={t("profile.subtitle")}>
       {/* 프로필 헤더 카드 (딥블루 그라데이션) */}
@@ -99,11 +122,17 @@ export default function ProfilePage() {
       {/* 2. 국적 / 체류자격 (비자) */}
       <ProfileSection title={t("profile.sec.visa")}>
         <ProfileField label={t("profile.nationality")}>
-          <Input
+          <select
             value={profile.nationality}
             onChange={(e) => updateProfile({ nationality: e.target.value })}
-            className="rounded-2xl text-xs font-bold border border-input bg-card shadow-xs focus-visible:ring-2 focus-visible:ring-ring"
-          />
+            className="w-full rounded-2xl border border-input bg-card p-3.5 text-xs font-bold text-foreground shadow-xs focus:ring-2 focus:ring-ring"
+          >
+            {nationalityOptions.map((c) => (
+              <option key={c} value={c}>
+                {c}
+              </option>
+            ))}
+          </select>
         </ProfileField>
 
         <ProfileField label={t("profile.visa")}>
