@@ -68,6 +68,22 @@ test('Tax form: exact decimal combined limit does not depend on float rounding',
   form.confirmed = false;
   assert.equal(f.validateTaxForm(form, now), null);
 });
+test('Tax form: warns without blocking when confirmed non-taxable income exceeds annual income', () => {
+  const form = {
+    ...f.emptyTaxForm(now),
+    annualIncome: '30000000',
+    nonTaxableIncome: '40000000',
+    confirmed: true,
+  };
+  assert.equal(f.shouldWarnNonTaxableIncome(form), true);
+  assert.equal(f.validateTaxForm(form, now), null);
+  assert.doesNotThrow(() => f.taxRequest(form, now));
+  form.nonTaxableIncome = '30000000';
+  assert.equal(f.shouldWarnNonTaxableIncome(form), false);
+  form.nonTaxableIncome = '40000000';
+  form.confirmed = false;
+  assert.equal(f.shouldWarnNonTaxableIncome(form), false);
+});
 for (const year of ['2000', '2024', '2025', '2026', '2027']) {
   test(`Tax form: confirmed sum limit applies to allowed year ${year}`, () => {
     const futureNow = new Date('2027-06-01T00:00:00Z');

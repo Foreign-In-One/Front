@@ -78,6 +78,19 @@ export function validateTaxForm(
   return null;
 }
 
+export function shouldWarnNonTaxableIncome(form: TaxForm): boolean {
+  const annual = cents(form.annualIncome);
+  const nonTaxable = cents(form.nonTaxableIncome);
+  return (
+    form.confirmed &&
+    annual !== null &&
+    annual !== undefined &&
+    nonTaxable !== null &&
+    nonTaxable !== undefined &&
+    nonTaxable > annual
+  );
+}
+
 export function taxRequest(form: TaxForm, now = new Date()): TaxAnalyzeRequest {
   const error = validateTaxForm(form, now);
   if (error) throw new Error(error);

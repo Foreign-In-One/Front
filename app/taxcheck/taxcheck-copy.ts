@@ -86,6 +86,8 @@ const ko = {
   invalidYear: '귀속연도는 2000년부터 현재 한국 연도까지 입력하세요.',
   invalidAmount:
     '금액은 0 이상, 정수 13자리·소수 2자리 이내로 입력하세요. 쉼표·음수·지수 표기는 사용할 수 없습니다.',
+  nonTaxableExceedsAnnual:
+    '비과세 근로소득이 총급여(비과세 제외)보다 큽니다. 입력한 소득 항목과 금액을 다시 확인하세요.',
   tooLarge: '참고 계산용 소득 합계가 서버의 허용 범위를 초과합니다.',
 } as const;
 
@@ -180,6 +182,8 @@ const en: TaxCopy = {
   invalidYear: 'Enter a tax year from 2000 through the current year in Korea.',
   invalidAmount:
     'Enter nonnegative amounts with up to 13 integer digits and 2 decimal places; no commas or exponent notation.',
+  nonTaxableExceedsAnnual:
+    'Non-taxable employment income is greater than annual employment income excluding non-taxable income. Check the income items and amounts.',
   tooLarge: 'The combined income exceeds the server limit.',
 };
 
@@ -272,6 +276,8 @@ const vi: TaxCopy = {
   invalidYear: 'Nhập năm từ 2000 đến năm hiện tại tại Hàn Quốc.',
   invalidAmount:
     'Nhập số không âm, tối đa 13 chữ số nguyên và 2 chữ số thập phân; không dùng dấu phân cách hay số mũ.',
+  nonTaxableExceedsAnnual:
+    'Thu nhập tiền lương miễn thuế lớn hơn tổng thu nhập tiền lương không gồm khoản miễn thuế. Hãy kiểm tra lại các khoản và số tiền đã nhập.',
   tooLarge: 'Tổng thu nhập vượt giới hạn máy chủ.',
 };
 
@@ -357,6 +363,8 @@ const zh: TaxCopy = {
   invalidYear: '请输入2000年至韩国当前年度之间的年份。',
   invalidAmount:
     '请输入非负金额，最多13位整数、2位小数，不使用千位分隔符或科学计数法。',
+  nonTaxableExceedsAnnual:
+    '免税工资收入高于不含免税收入的工资总额。请重新核对收入项目和金额。',
   tooLarge: '收入合计超过服务器允许范围。',
 };
 
