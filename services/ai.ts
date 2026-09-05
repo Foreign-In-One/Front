@@ -66,29 +66,37 @@ export async function fetchAiPaycheckAnalysis(payload: {
           summary: d.summary || localFallback.data.summary,
           causes:
             d.reasons && d.reasons.length > 0
-              ? d.reasons.map((r, i) => ({
-                  title:
-                    payload.locale === 'en'
-                      ? `Item ${i + 1}`
-                      : payload.locale === 'vi'
-                        ? `Mục ${i + 1}`
-                        : payload.locale === 'zh'
-                          ? `确认项 ${i + 1}`
-                          : `확인 항목 ${i + 1}`,
-                  description: r,
-                  category: getCategoryFromFinding(payload.finding),
-                }))
+              ? d.reasons.map((r, i) => {
+                  const titlePart = r.includes('(') ? r.split('(')[0].trim() : r.split(':')[0].trim();
+                  return {
+                    title: titlePart || `원인 항목 ${i + 1}`,
+                    description: r,
+                    category: r.includes('공제')
+                      ? 'DEDUCTION'
+                      : r.includes('수당')
+                      ? 'ALLOWANCE'
+                      : getCategoryFromFinding(payload.finding),
+                  };
+                })
               : localFallback.data.causes,
           legalBasis: localFallback.data.legalBasis,
-          requiredEvidence: localFallback.data.requiredEvidence,
+          requiredEvidence:
+            d.requiredEvidence && d.requiredEvidence.length > 0
+              ? d.requiredEvidence
+              : localFallback.data.requiredEvidence,
           nextActions:
             d.nextActions && d.nextActions.length > 0
-              ? d.nextActions.map((act, i) => ({
-                  step: i + 1,
-                  title: act,
-                  action: act,
-                  urgency: 'HIGH' as const,
-                }))
+              ? d.nextActions.map((act, i) => {
+                  const colonIdx = act.indexOf(':');
+                  const title = colonIdx !== -1 ? act.slice(0, colonIdx).trim() : `${i + 1}단계`;
+                  const action = colonIdx !== -1 ? act.slice(colonIdx + 1).trim() : act;
+                  return {
+                    step: i + 1,
+                    title,
+                    action,
+                    urgency: i === 0 ? ('HIGH' as const) : i === 1 ? ('HIGH' as const) : ('MEDIUM' as const),
+                  };
+                })
               : localFallback.data.nextActions,
           messageForEmployer: {
             korean:

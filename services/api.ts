@@ -101,7 +101,9 @@ export interface PaycheckExplainResponseDto {
   caseType?: string;
   summary: string;
   reasons: string[];
+  requiredEvidence?: string[];
   nextActions: string[];
+  messageForEmployer?: string;
   employerQuestionCards?: EmployerQuestionCardDto[];
 }
 
@@ -479,9 +481,9 @@ export async function triggerSalaryMonitoringBatchApi(
 }> {
   const query = userId ? `?userId=${userId}` : '';
   const fallbackResult: BatchSalaryMonitoringResponseDto = {
-    processedCount: 3,
-    createdCount: 1,
-    updatedCount: 2,
+    processedCount: 0,
+    createdCount: 0,
+    updatedCount: 0,
   };
 
   const res = await fetchApi<BatchSalaryMonitoringResponseDto>(
@@ -506,23 +508,9 @@ export async function getMockBankTransactionsApi(
     `/api/mock/bank/transactions${query}`,
     { method: 'GET' },
     {
-      apiTranId: 'mock-001',
-      rspCode: 'A0000',
-      resList: [
-        {
-          bankTranId: 'F123456789U4BC34239Z002',
-          bankTranDate: '20260825',
-          tranTime: '091400',
-          inoutType: '입금',
-          tranType: '급여',
-          printedContent: '한국정밀 8월 급여',
-          tranAmt: '2260000',
-          afterBalanceAmt: '6760000',
-          branchName: '분당점',
-          bankName: '하나은행',
-          fintechUseNum: '123456789012345678901234',
-        },
-      ],
+      apiTranId: '',
+      rspCode: 'FAIL',
+      resList: [],
     },
   );
   return { transactions: res.data, isMock: res.isMock };
