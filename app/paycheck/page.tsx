@@ -248,6 +248,8 @@ export default function PayCheckPage() {
 
   const [analyzing, setAnalyzing] = useState(false);
   const [analysis, setAnalysis] = useState<PaycheckAnalysis | null>(null);
+  const [comparisonViewMode, setComparisonViewMode] = useState<"table" | "tabs">("table");
+  const [activeDocTab, setActiveDocTab] = useState<DocKind>("contract");
 
   const [bankTx, setBankTx] = useState<MockBankTransactionDto | null>(null);
   const [syncingBank, setSyncingBank] = useState(false);
@@ -1011,19 +1013,32 @@ export default function PayCheckPage() {
 
                 {/* 3중 대조표 */}
                 {selectedRecord.analysis.rows && selectedRecord.analysis.rows.length > 0 && (
-                  <div className="rounded-2xl bg-muted/60 p-4 space-y-2">
-                    <h4 className="text-xs font-extrabold text-foreground">{t("pay.report.tableTitle")}</h4>
-                    <div className="divide-y divide-border/40 text-xs">
-                      {selectedRecord.analysis.rows.map((row, idx) => (
-                        <div key={idx} className="flex items-center justify-between py-2">
-                          <span className="font-bold text-muted-foreground">{row.item}</span>
-                          <div className="flex items-center gap-2 font-semibold text-foreground">
-                            <span>{row.statement}</span>
-                            <ArrowRight className="size-3 text-muted-foreground" />
-                            <span className="font-extrabold text-primary">{row.deposit}</span>
-                          </div>
-                        </div>
-                      ))}
+                  <div className="rounded-2xl bg-muted/60 p-4 space-y-2.5">
+                    <div className="flex items-center justify-between">
+                      <h4 className="text-xs font-extrabold text-foreground">{t("pay.report.tableTitle")}</h4>
+                      <span className="text-[10px] font-semibold text-muted-foreground">계약서 · 명세서 · 실입금 대조</span>
+                    </div>
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-xs text-left">
+                        <thead>
+                          <tr className="border-b border-border/50 text-[11px] font-bold text-muted-foreground">
+                            <th className="pb-2 font-extrabold">항목</th>
+                            <th className="pb-2 text-center">근로계약서</th>
+                            <th className="pb-2 text-center">임금명세서</th>
+                            <th className="pb-2 text-right">통장 실입금</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-border/30">
+                          {selectedRecord.analysis.rows.map((row, idx) => (
+                            <tr key={idx} className="py-1.5">
+                              <td className="py-2 font-bold text-muted-foreground">{row.item}</td>
+                              <td className="py-2 text-center font-medium text-foreground">{row.contract}</td>
+                              <td className="py-2 text-center font-medium text-foreground">{row.statement}</td>
+                              <td className="py-2 text-right font-extrabold text-primary">{row.deposit}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
                     </div>
                   </div>
                 )}
@@ -1471,20 +1486,317 @@ export default function PayCheckPage() {
         />
 
         {analysis?.rows && analysis.rows.length > 0 && (
-          <div className="rounded-3xl bg-card border border-border/70 p-5 shadow-xs backdrop-blur-md space-y-3">
-            <h4 className="text-xs font-extrabold text-foreground">{t("pay.table")}</h4>
-            <div className="divide-y divide-border/40 text-xs">
-              {analysis.rows.map((row, idx) => (
-                <div key={idx} className="flex items-center justify-between py-2.5">
-                  <span className="font-bold text-muted-foreground">{row.item}</span>
-                  <div className="flex items-center gap-3 font-semibold text-foreground">
-                    <span>{row.statement}</span>
-                    <ArrowRight className="size-3 text-muted-foreground" />
-                    <span className="font-extrabold text-primary">{row.deposit}</span>
-                  </div>
-                </div>
-              ))}
+          <div className="rounded-3xl bg-card border border-border/70 p-5 shadow-xs backdrop-blur-md space-y-4">
+            {/* 상단 헤더 및 뷰 전환 탭 */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-border/40 pb-3">
+              <div>
+                <h4 className="text-sm font-extrabold text-foreground flex items-center gap-1.5">
+                  ✨ {t("pay.table")}
+                  <span className="text-[11px] font-medium text-muted-foreground">(계약서 ↔ 명세서 ↔ 통장입금 3중 대조)</span>
+                </h4>
+                <p className="text-[11px] font-medium text-muted-foreground mt-0.5">
+                  각 서류를 클릭하여 등록된 값이나 금액을 직접 확인하고 수정할 수 있습니다.
+                </p>
+              </div>
+
+              {/* 보기 방식 전환 (3중 대조표 vs 서류별 보기) */}
+              <div className="flex items-center rounded-xl bg-muted/80 p-1 border border-border/60 self-start sm:self-auto">
+                <button
+                  type="button"
+                  onClick={() => setComparisonViewMode("table")}
+                  className={`rounded-lg px-2.5 py-1 text-xs font-bold transition-all ${
+                    comparisonViewMode === "table"
+                      ? "bg-card text-primary shadow-xs"
+                      : "text-muted-foreground hover:text-foreground"
+                  }`}
+                >
+                  3중 대조표
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setComparisonViewMode("tabs")}
+                  className={`rounded-lg px-2.5 py-1 text-xs font-bold transition-all ${
+                    comparisonViewMode === "tabs"
+                      ? "bg-card text-primary shadow-xs"
+                      : "text-muted-foreground hover:text-foreground"
+                  }`}
+                >
+                  서류별 보기
+                </button>
+              </div>
             </div>
+
+            {/* 빠른 서류 확인·수정 바로가기 버튼 3종 */}
+            <div className="flex flex-wrap items-center gap-2 pt-0.5">
+              <button
+                type="button"
+                onClick={() => setEditingKind("contract")}
+                className="inline-flex items-center gap-1.5 rounded-xl border border-primary/30 bg-primary/5 hover:bg-primary/10 px-3 py-1.5 text-xs font-bold text-primary transition-all shadow-2xs cursor-pointer active:scale-95"
+              >
+                <FileText className="size-3.5" />
+                <span>근로계약서 확인·수정</span>
+                <span className="text-[10px] opacity-75">({docs.contract?.fields.basePay ? won(docs.contract.fields.basePay) : "미등록"})</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setEditingKind("statement")}
+                className="inline-flex items-center gap-1.5 rounded-xl border border-info/30 bg-info/5 hover:bg-info/10 px-3 py-1.5 text-xs font-bold text-info-foreground dark:text-info transition-all shadow-2xs cursor-pointer active:scale-95"
+              >
+                <Receipt className="size-3.5" />
+                <span>임금명세서 확인·수정</span>
+                <span className="text-[10px] opacity-75">({docs.statement?.fields.netPay ? won(docs.statement.fields.netPay) : "미등록"})</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setEditingKind("deposit")}
+                className="inline-flex items-center gap-1.5 rounded-xl border border-border/80 bg-muted/60 hover:bg-muted px-3 py-1.5 text-xs font-bold text-foreground transition-all shadow-2xs cursor-pointer active:scale-95"
+              >
+                <Landmark className="size-3.5" />
+                <span>통장 실입금 확인·수정</span>
+                <span className="text-[10px] opacity-75">({docs.deposit?.fields.netPay ? won(docs.deposit.fields.netPay) : "미등록"})</span>
+              </button>
+            </div>
+
+            {/* 1. 전체 3중 대조 테이블 뷰 */}
+            {comparisonViewMode === "table" && (
+              <div className="overflow-x-auto pt-1">
+                <table className="w-full text-xs text-left border-collapse">
+                  <thead>
+                    <tr className="border-b border-border/60 text-[11px] font-bold text-muted-foreground">
+                      <th className="py-2.5 pr-3 font-extrabold">항목</th>
+                      <th className="py-2.5 px-2 text-center">
+                        <button
+                          type="button"
+                          onClick={() => setEditingKind("contract")}
+                          className="hover:text-primary underline-offset-2 hover:underline inline-flex items-center gap-1"
+                        >
+                          근로계약서 📝
+                        </button>
+                      </th>
+                      <th className="py-2.5 px-2 text-center">
+                        <button
+                          type="button"
+                          onClick={() => setEditingKind("statement")}
+                          className="hover:text-primary underline-offset-2 hover:underline inline-flex items-center gap-1"
+                        >
+                          임금명세서 📑
+                        </button>
+                      </th>
+                      <th className="py-2.5 px-2 text-center">
+                        <button
+                          type="button"
+                          onClick={() => setEditingKind("deposit")}
+                          className="hover:text-primary underline-offset-2 hover:underline inline-flex items-center gap-1"
+                        >
+                          통장 실입금 🏦
+                        </button>
+                      </th>
+                      <th className="py-2.5 pl-2 text-right">대조 결과</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-border/40">
+                    {analysis.rows.map((row, idx) => {
+                      const isMatch = row.status === "MATCH";
+                      const isEx = row.status === "EXPLANATION_REQUIRED";
+                      return (
+                        <tr key={idx} className="hover:bg-muted/40 transition-colors">
+                          <td className="py-3 pr-3 font-extrabold text-foreground">{row.item}</td>
+                          <td
+                            className="py-3 px-2 text-center text-muted-foreground font-semibold cursor-pointer hover:bg-primary/5 rounded-lg transition-colors"
+                            onClick={() => setEditingKind("contract")}
+                            title="클릭하여 근로계약서 수정"
+                          >
+                            {row.contract}
+                          </td>
+                          <td
+                            className="py-3 px-2 text-center text-foreground font-bold cursor-pointer hover:bg-primary/5 rounded-lg transition-colors"
+                            onClick={() => setEditingKind("statement")}
+                            title="클릭하여 임금명세서 수정"
+                          >
+                            {row.statement}
+                          </td>
+                          <td
+                            className="py-3 px-2 text-center text-primary font-black cursor-pointer hover:bg-primary/5 rounded-lg transition-colors"
+                            onClick={() => setEditingKind("deposit")}
+                            title="클릭하여 통장 입금내역 수정"
+                          >
+                            {row.deposit}
+                          </td>
+                          <td className="py-3 pl-2 text-right">
+                            <span
+                              className={`inline-block rounded-full px-2.5 py-0.5 text-[10px] font-black ${
+                                isMatch
+                                  ? "bg-primary/10 text-primary border border-primary/20"
+                                  : isEx
+                                  ? "bg-warn/15 text-warn border border-warn/30"
+                                  : "bg-muted text-muted-foreground"
+                              }`}
+                            >
+                              {row.result || (isMatch ? "일치" : isEx ? "차액 확인" : "-")}
+                            </span>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+
+            {/* 2. 서류별 탭 모아보기 뷰 (따로따로 클릭해서 보는 서류 전용 카드) */}
+            {comparisonViewMode === "tabs" && (
+              <div className="pt-1 space-y-3">
+                <div className="flex items-center gap-1.5 rounded-2xl bg-muted/60 p-1.5">
+                  <button
+                    type="button"
+                    onClick={() => setActiveDocTab("contract")}
+                    className={`flex-1 rounded-xl py-2 text-xs font-black transition-all ${
+                      activeDocTab === "contract"
+                        ? "bg-card text-primary shadow-xs"
+                        : "text-muted-foreground hover:text-foreground"
+                    }`}
+                  >
+                    근로계약서 📝
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setActiveDocTab("statement")}
+                    className={`flex-1 rounded-xl py-2 text-xs font-black transition-all ${
+                      activeDocTab === "statement"
+                        ? "bg-card text-primary shadow-xs"
+                        : "text-muted-foreground hover:text-foreground"
+                    }`}
+                  >
+                    임금명세서 📑
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setActiveDocTab("deposit")}
+                    className={`flex-1 rounded-xl py-2 text-xs font-black transition-all ${
+                      activeDocTab === "deposit"
+                        ? "bg-card text-primary shadow-xs"
+                        : "text-muted-foreground hover:text-foreground"
+                    }`}
+                  >
+                    통장 입금내역 🏦
+                  </button>
+                </div>
+
+                {/* 선택된 서류 상세 카드 */}
+                {activeDocTab === "contract" && (
+                  <div className="rounded-2xl border border-primary/20 bg-primary/5 p-4 space-y-3 pc-rise">
+                    <div className="flex items-center justify-between border-b border-primary/15 pb-2.5">
+                      <div className="flex items-center gap-2">
+                        <FileText className="size-4 text-primary" />
+                        <span className="text-xs font-black text-foreground">근로계약서 등록 내역</span>
+                      </div>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => setEditingKind("contract")}
+                        className="h-7 rounded-lg text-[11px] font-bold border-primary/30 text-primary hover:bg-primary/10"
+                      >
+                        계약서 값 수정
+                      </Button>
+                    </div>
+                    <div className="grid grid-cols-2 gap-3 text-xs">
+                      <div className="rounded-xl bg-background/80 p-3 border border-border/60">
+                        <span className="text-muted-foreground text-[11px] font-medium">약정 기본급</span>
+                        <p className="text-sm font-black text-foreground mt-0.5">
+                          {docs.contract?.fields.basePay ? won(docs.contract.fields.basePay) : "-"}
+                        </p>
+                      </div>
+                      <div className="rounded-xl bg-background/80 p-3 border border-border/60">
+                        <span className="text-muted-foreground text-[11px] font-medium">약정 급여 지급일</span>
+                        <p className="text-sm font-black text-primary mt-0.5">
+                          {docs.contract?.fields.payDay ? `매월 ${docs.contract.fields.payDay}일` : (userPayDay ? `매월 ${userPayDay}일` : "-")}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {activeDocTab === "statement" && (
+                  <div className="rounded-2xl border border-info/25 bg-info/5 p-4 space-y-3 pc-rise">
+                    <div className="flex items-center justify-between border-b border-info/20 pb-2.5">
+                      <div className="flex items-center gap-2">
+                        <Receipt className="size-4 text-info-foreground dark:text-info" />
+                        <span className="text-xs font-black text-foreground">임금명세서 추출 내역</span>
+                      </div>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => setEditingKind("statement")}
+                        className="h-7 rounded-lg text-[11px] font-bold border-info/30 text-info-foreground hover:bg-info/10"
+                      >
+                        명세서 값 수정
+                      </Button>
+                    </div>
+                    <div className="grid grid-cols-2 gap-3 text-xs">
+                      <div className="rounded-xl bg-background/80 p-3 border border-border/60">
+                        <span className="text-muted-foreground text-[11px] font-medium">명세서 기본급</span>
+                        <p className="text-sm font-black text-foreground mt-0.5">
+                          {docs.statement?.fields.basePay ? won(docs.statement.fields.basePay) : "-"}
+                        </p>
+                      </div>
+                      <div className="rounded-xl bg-background/80 p-3 border border-border/60">
+                        <span className="text-muted-foreground text-[11px] font-medium">연장/기타 수당</span>
+                        <p className="text-sm font-black text-foreground mt-0.5">
+                          {docs.statement?.fields.allowances ? won(docs.statement.fields.allowances) : "-"}
+                        </p>
+                      </div>
+                      <div className="rounded-xl bg-background/80 p-3 border border-border/60">
+                        <span className="text-muted-foreground text-[11px] font-medium">공제 총액</span>
+                        <p className="text-sm font-black text-destructive mt-0.5">
+                          {docs.statement?.fields.deductions ? won(docs.statement.fields.deductions) : "-"}
+                        </p>
+                      </div>
+                      <div className="rounded-xl bg-background/80 p-3 border border-border/60">
+                        <span className="text-muted-foreground text-[11px] font-medium">명세서 실지급액</span>
+                        <p className="text-sm font-black text-primary mt-0.5">
+                          {docs.statement?.fields.netPay ? won(docs.statement.fields.netPay) : "-"}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {activeDocTab === "deposit" && (
+                  <div className="rounded-2xl border border-border/80 bg-muted/30 p-4 space-y-3 pc-rise">
+                    <div className="flex items-center justify-between border-b border-border/40 pb-2.5">
+                      <div className="flex items-center gap-2">
+                        <Landmark className="size-4 text-primary" />
+                        <span className="text-xs font-black text-foreground">통장 실입금 내역</span>
+                      </div>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => setEditingKind("deposit")}
+                        className="h-7 rounded-lg text-[11px] font-bold border-input text-foreground hover:bg-muted"
+                      >
+                        입금 내역 수정
+                      </Button>
+                    </div>
+                    <div className="grid grid-cols-2 gap-3 text-xs">
+                      <div className="rounded-xl bg-background/80 p-3 border border-border/60">
+                        <span className="text-muted-foreground text-[11px] font-medium">통장 실입금액</span>
+                        <p className="text-sm font-black text-primary mt-0.5">
+                          {docs.deposit?.fields.netPay ? won(docs.deposit.fields.netPay) : "-"}
+                        </p>
+                      </div>
+                      <div className="rounded-xl bg-background/80 p-3 border border-border/60">
+                        <span className="text-muted-foreground text-[11px] font-medium">실제 입금 일자</span>
+                        <p className="text-sm font-black text-foreground mt-0.5">
+                          {docs.deposit?.fields.payDate || "-"}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         )}
 
