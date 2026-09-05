@@ -77,8 +77,11 @@ function expectedNet(f: DocFields | undefined): number | null {
   return base + (num(f.allowances) ?? 0) - (num(f.deductions) ?? 0);
 }
 
-function cell(v: number | null | undefined): string {
-  return v === null || v === undefined ? tr("rule.common.noData") : won(v);
+function cell(v: number | null | undefined, placeholder?: string): string {
+  if (v === null || v === undefined) {
+    return placeholder !== undefined ? placeholder : tr("rule.common.noData");
+  }
+  return won(v);
 }
 
 const docName = (kind: "contract" | "statement" | "deposit"): string => tr(`rule.doc.${kind}`);
@@ -105,12 +108,13 @@ export function analyzePaycheck(
     values: [number | null | undefined, number | null | undefined, number | null | undefined],
     result: string,
     status: PayCheckStatus,
+    placeholders: [string?, string?, string?] = [],
   ) => {
     rows.push({
       item,
-      contract: cell(values[0]),
-      statement: cell(values[1]),
-      deposit: cell(values[2]),
+      contract: cell(values[0], placeholders[0]),
+      statement: cell(values[1], placeholders[1]),
+      deposit: cell(values[2], placeholders[2]),
       result,
       status,
     });
@@ -118,7 +122,7 @@ export function analyzePaycheck(
 
   /* 1. 기본급 */
   const baseDiff = compare(num(c?.basePay), num(s?.basePay));
-  pushRow(tr("rule.row.base"), [c?.basePay, s?.basePay, null], baseDiff.text, baseDiff.status);
+  pushRow(tr("rule.row.base"), [c?.basePay, s?.basePay, null], baseDiff.text, baseDiff.status, [undefined, undefined, "-"]);
   if (baseDiff.status === "EXPLANATION_REQUIRED") {
     findings.push({
       id: "base",
@@ -152,6 +156,7 @@ export function analyzePaycheck(
     [c?.allowances, s?.allowances, null],
     num(s?.allowances) === null ? tr("rule.row.allowance.unconfirmed") : tr("rule.row.allowance.confirmed"),
     num(s?.allowances) === null ? "INSUFFICIENT_DATA" : "MATCH",
+    ["-", undefined, "-"],
   );
 
   /* 3. 공제 */
@@ -173,6 +178,7 @@ export function analyzePaycheck(
       : deductionRatio !== null && deductionRatio > 0.25
         ? "USER_CONFIRMATION"
         : "MATCH",
+    ["-", undefined, "-"],
   );
   if (deduction !== null && deductionRatio !== null && deductionRatio > 0.25) {
     findings.push({
@@ -294,9 +300,9 @@ export function analyzePaycheck(
   }
   rows.push({
     item: tr("rule.row.payDate"),
-    contract: payDay ? tr("rule.row.payDate.contractLabel", { payDay }) : tr("rule.common.noData"),
-    statement: s?.payDate ? formatKDate(s.payDate) : tr("rule.common.noData"),
-    deposit: payDate ? formatKDate(payDate) : tr("rule.common.noData"),
+    contract: payDay ? tr("rule.row.payDate.contractLabel", { payDay }) : "-",
+    statement: s?.payDate ? formatKDate(s.payDate) : "-",
+    deposit: payDate ? formatKDate(payDate) : "-",
     result: dateResult,
     status: dateStatus,
   });

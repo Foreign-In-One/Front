@@ -94,8 +94,9 @@ export async function readDocument(input: {
         ok: false,
         mock: false,
         fields: emptyFields(period),
+        candidateAmounts: [],
         confidence: "low",
-        message: err instanceof Error ? err.message : "문서 판독에 실패했습니다.",
+        message: err instanceof Error ? err.message : "문서 판독에 실패했습니다. 직접 입력해 주세요.",
       };
     }
   }

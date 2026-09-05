@@ -50,6 +50,7 @@ export function Navbar({ title: _title, subtitle: _subtitle }: NavbarProps = {})
                 width={138}
                 height={41}
                 className="h-8 w-auto object-contain sm:h-9"
+                style={{ width: "auto" }}
                 priority
               />
             </Link>
