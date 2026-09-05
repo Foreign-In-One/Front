@@ -11,9 +11,41 @@ import { PayCycleProvider } from '@/state/paycycle-context';
 const inter = Inter({ subsets: ['latin'] });
 
 export const metadata: Metadata = {
-  title: 'PayCycle AI · 외국인 근로자 금융권리 Agent',
+  metadataBase: new URL(
+    process.env.NEXT_PUBLIC_APP_URL || 'https://paycheck-chi.vercel.app',
+  ),
+  title: {
+    default: 'Foreign-One: Your financial hole-in-Won',
+    template: '%s · Foreign-One',
+  },
   description:
-    '한국에서 일하는 외국인 근로자를 위한 급여 3중 대조, 캘린더, 프로필 관리 서비스',
+    'Foreign-One: Your financial hole-in-Won - 외국인 근로자를 위한 급여 3중 대조, 캘린더, 세금 및 정산 올인원 금융권리 케어',
+  icons: {
+    icon: '/logo2.svg',
+    shortcut: '/logo2.svg',
+    apple: '/logo2.svg',
+  },
+  openGraph: {
+    title: 'Foreign-One: Your financial hole-in-Won',
+    description:
+      'Foreign-One: Your financial hole-in-Won - 외국인 근로자를 위한 스마트 금융권리 및 급여·세금·출국 정산 올인원 케어',
+    images: [
+      {
+        url: '/logo2.svg',
+        width: 1774,
+        height: 887,
+        alt: 'Foreign-One',
+      },
+    ],
+    type: 'website',
+  },
+  twitter: {
+    card: 'summary_large_image',
+    title: 'Foreign-One: Your financial hole-in-Won',
+    description:
+      'Foreign-One: Your financial hole-in-Won - 외국인 근로자를 위한 스마트 금융권리 케어',
+    images: ['/logo2.svg'],
+  },
 };
 
 export default function RootLayout({
