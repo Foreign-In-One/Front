@@ -163,7 +163,7 @@ export function ChatDock() {
                 aria-label={t('common.close')}
                 className="text-muted-foreground transition-colors hover:text-foreground"
               >
-                <X className="size-[18px]" />
+                <X className="size-4.5" />
               </button>
             </header>
 

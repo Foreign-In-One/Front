@@ -44,7 +44,7 @@ function HomePageContent() {
     if (!pickedLanguage) {
       return (
         <div className="flex min-h-screen flex-col items-center justify-center bg-background px-6 py-10">
-          <div className="w-full max-w-sm">
+          <div className="pc-rise w-full max-w-sm">
             <Brand label="PayCycle AI" />
             <h1 className="mt-8 font-bold text-2xl text-foreground">
               {t('land.pickLanguage')}
@@ -87,9 +87,9 @@ function HomePageContent() {
 
     return (
       <div className="flex min-h-screen flex-col items-center justify-center bg-background px-6 py-10">
-        <div className="w-full max-w-sm">
+        <div className="pc-rise w-full max-w-sm">
           <Brand label={`PayCycle AI · ${t('landing.badge')}`} />
-          <h1 className="mt-6 whitespace-pre-line font-black text-2xl text-foreground leading-tight">
+          <h1 className="mt-6 whitespace-pre-line font-bold text-2xl text-foreground leading-tight">
             {t('landing.title')}
           </h1>
           <p className="mt-3 text-muted-foreground text-sm leading-relaxed">
@@ -138,10 +138,10 @@ function HomePageContent() {
 
   return (
     <AppShell title={t('app.name')} subtitle={t('landing.badge')}>
-      <div className="flex flex-col items-center justify-center space-y-6 py-6 text-center">
-        <div className="w-full rounded-3xl bg-gradient-to-br from-primary to-primary/80 p-6 text-primary-foreground shadow-primary/20 shadow-xl">
+      <div className="pc-rise flex flex-col items-center justify-center space-y-6 py-6 text-center">
+        <div className="w-full rounded-3xl bg-primary p-6 text-primary-foreground shadow-lg shadow-primary/20">
           <Sparkles className="mx-auto size-8 opacity-90" />
-          <h1 className="mt-4 whitespace-pre-line font-black text-2xl leading-tight">
+          <h1 className="mt-4 whitespace-pre-line font-bold text-2xl leading-tight">
             {t('landing.title')}
           </h1>
           <p className="mx-auto mt-3 max-w-sm text-xs leading-relaxed opacity-90">

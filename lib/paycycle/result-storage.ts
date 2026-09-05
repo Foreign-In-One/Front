@@ -1,4 +1,5 @@
 import type { TaxProfile, TaxRuleCard } from './taxcheck';
+import type { ExitClaim } from './types';
 
 export const RESULT_STORAGE_KEY = 'paycycle-results-v1';
 const USER_STORAGE_KEY = 'paycycle-user-id';
@@ -43,6 +44,8 @@ export interface SavedExitCheckResult extends SavedResultBase {
   departureDate: string | null;
   readyCount: number;
   totalCount: number;
+  /** 이전 저장 기록에는 없을 수 있어 선택값으로 둡니다. */
+  claims?: ExitClaim[];
 }
 
 export type SavedResult =
@@ -189,6 +192,7 @@ export interface NewExitCheckResult {
   departureDate: string | null;
   readyCount: number;
   totalCount: number;
+  claims: ExitClaim[];
 }
 
 export interface NewPayCheckResult {
@@ -268,6 +272,13 @@ export function saveExitCheckResult(
     departureDate: input.departureDate,
     readyCount: input.readyCount,
     totalCount: input.totalCount,
+    claims: input.claims.map((claim) => ({
+      ...claim,
+      confirmed: [...claim.confirmed],
+      missing: [...claim.missing],
+      documents: [...claim.documents],
+      evidence: claim.evidence.map((evidence) => ({ ...evidence })),
+    })),
   };
 
   try {
@@ -313,4 +324,3 @@ export function savePayCheckResult(
     return null;
   }
 }
-

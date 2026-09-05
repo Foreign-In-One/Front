@@ -1,26 +1,30 @@
 @import "tailwindcss";
 
 :root {
-  --background: #f7f8fc;
-  --surface: #eef1f7;
-  --foreground: #172033;
+  --radius: 1rem;
+  --font-body:
+    "Pretendard Variable", Pretendard, -apple-system, BlinkMacSystemFont,
+    system-ui, sans-serif;
+  --background: #f4f7fb;
+  --surface: #ecf1f6;
+  --foreground: #101a2f;
   --card: #ffffff;
-  --card-foreground: #172033;
+  --card-foreground: #101a2f;
   --popover: #ffffff;
-  --popover-foreground: #172033;
-  --primary: #3458e6;
+  --popover-foreground: #101a2f;
+  --primary: #143463;
   --primary-foreground: #f8fafd;
-  --secondary: #e9eefb;
-  --secondary-foreground: #2747c5;
-  --muted: #eef1f6;
-  --muted-foreground: #667085;
-  --accent: #e6eaf0;
-  --accent-foreground: #172033;
+  --secondary: #e7eef5;
+  --secondary-foreground: #143463;
+  --muted: #ebeff4;
+  --muted-foreground: #5e6a7b;
+  --accent: #d7ebfa;
+  --accent-foreground: #112d55;
   --destructive: #e7000b;
   --destructive-foreground: #f8fafc;
-  --border: #e6e9f2;
-  --input: #e6e9f2;
-  --ring: #3458e6;
+  --border: #dae0e8;
+  --input: #dae0e8;
+  --ring: #5072a6;
 
   --signal: #009962;
   --signal-foreground: #004022;
@@ -42,6 +46,14 @@
 }
 
 @theme inline {
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --radius-2xl: calc(var(--radius) + 8px);
+  --radius-3xl: calc(var(--radius) + 12px);
+  --radius-4xl: calc(var(--radius) + 16px);
+
   --color-background: var(--background);
   --color-surface: var(--surface);
   --color-foreground: var(--foreground);
@@ -81,8 +93,8 @@
   --color-chart-4: var(--chart-4);
   --color-chart-5: var(--chart-5);
 
-  --font-sans: var(--font-geist-sans, ui-sans-serif, system-ui, sans-serif);
-  --font-mono: var(--font-geist-mono, ui-monospace, monospace);
+  --font-sans: var(--font-body);
+  --font-mono: ui-monospace, monospace;
 }
 
 @media (prefers-color-scheme: dark) {

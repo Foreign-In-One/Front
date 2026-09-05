@@ -1,13 +1,13 @@
-"use client";
+'use client';
 
-import { Globe } from "lucide-react";
-import { LOCALES, useT, type UiLocale } from "@/i18n";
+import { Globe } from 'lucide-react';
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
+} from '@/components/ui/dropdown-menu';
+import { LOCALES, type UiLocale, useT } from '@/i18n';
 
 /**
  * ============================================================================
@@ -69,11 +69,7 @@ import {
  * 선택된 언어 설정은 브라우저 `localStorage`에 영구 저장(`paycycle-locale`)되어 새로고침 후에도 유지됩니다.
  * ============================================================================
  */
-export function LanguageSwitcher({
-  className,
-}: {
-  className?: string;
-}) {
+export function LanguageSwitcher({ className }: { className?: string }) {
   const { locale, setLocale, t } = useT();
   const current = LOCALES.find((l) => l.code === locale);
 
@@ -82,24 +78,24 @@ export function LanguageSwitcher({
       <DropdownMenuTrigger asChild>
         <button
           type="button"
-          aria-label={t("common.language")}
-          className={`inline-flex items-center gap-1.5 rounded-full border border-border bg-card px-3 py-1.5 text-xs font-semibold text-foreground shadow-xs transition-colors hover:bg-accent hover:text-accent-foreground ${
-            className ?? ""
+          aria-label={t('common.language')}
+          className={`inline-flex items-center gap-1.5 rounded-full border border-border bg-card px-3 py-1.5 font-semibold text-foreground text-xs shadow-xs transition-colors hover:bg-accent hover:text-accent-foreground ${
+            className ?? ''
           }`}
         >
           <Globe className="size-3.5 text-muted-foreground" />
-          <span>{current?.label ?? "한국어"}</span>
+          <span>{current?.label ?? '한국어'}</span>
         </button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="min-w-36 rounded-2xl p-1.5 shadow-xl">
+      <DropdownMenuContent align="end" className="min-w-36 rounded-2xl p-1.5">
         {LOCALES.map((l) => (
           <DropdownMenuItem
             key={l.code}
             onSelect={() => setLocale(l.code as UiLocale)}
             className={`cursor-pointer rounded-xl px-3 py-2 text-xs transition-colors ${
               l.code === locale
-                ? "font-bold text-primary bg-primary/10"
-                : "text-foreground hover:bg-muted"
+                ? 'bg-primary/10 font-bold text-primary'
+                : 'text-foreground hover:bg-muted'
             }`}
           >
             {l.label}

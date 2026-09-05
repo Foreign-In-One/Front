@@ -6,19 +6,29 @@ import {
   ArrowRight,
   CheckCircle2,
   Clipboard,
+  History,
   Plane,
   RotateCcw,
-  ShieldCheck,
-  Wallet,
 } from 'lucide-react';
 import Link from 'next/link';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { AppShell } from '@/components/app-shell';
 import { Button } from '@/components/ui/button';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import { WizardStart } from '@/components/wizard';
 import { useT } from '@/i18n';
 import { formatKDate } from '@/lib/paycycle/format';
-import { saveExitCheckResult } from '@/lib/paycycle/result-storage';
+import {
+  listSavedResults,
+  type SavedResult,
+  saveExitCheckResult,
+} from '@/lib/paycycle/result-storage';
 import { evaluateExit } from '@/lib/paycycle/rule-engine';
 import type { ExitClaim, ExitProfile } from '@/lib/paycycle/types';
 import { usePayCycle } from '@/state/paycycle-context';
@@ -30,6 +40,17 @@ export default function ExitCheckPage() {
   const { t } = useT();
 
   const [step, setStep] = useState(-1);
+  const [pastResults, setPastResults] = useState<SavedResult[]>([]);
+  const [selectedResult, setSelectedResult] = useState<SavedResult | null>(
+    null,
+  );
+
+  useEffect(() => {
+    if (step === -1) {
+      setPastResults(listSavedResults().filter((r) => r.kind === 'exit'));
+    }
+  }, [step]);
+
   const [localProfile, setLocalProfile] = useState<ExitProfile>(() => ({
     hasInsuranceRecord: state.exitProfile?.hasInsuranceRecord ?? null,
     pensionDeducted: state.exitProfile?.pensionDeducted ?? null,
@@ -76,7 +97,8 @@ export default function ExitCheckPage() {
     const end = employment.exitDate?.value
       ? parseLocal(employment.exitDate.value)
       : new Date();
-    if (isNaN(start.getTime()) || isNaN(end.getTime())) return null;
+    if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime()))
+      return null;
     if (end < start) return null; // 출국일이 입사일보다 빠른 경우 indeterminate
 
     let months =
@@ -122,6 +144,7 @@ export default function ExitCheckPage() {
         departureDate,
         readyCount,
         totalCount: claims.length,
+        claims,
       });
       if (res) {
         savedRef.current = true;
@@ -133,7 +156,7 @@ export default function ExitCheckPage() {
     step,
     departureDate,
     readyCount,
-    claims.length,
+    claims,
     localProfile,
     updateExitProfile,
     signature,
@@ -171,79 +194,169 @@ export default function ExitCheckPage() {
   if (step === -1) {
     return (
       <AppShell title={t('exit.title')} subtitle={t('exit.subtitle')}>
-        <div className="space-y-4">
-          {/* 배너 카드 */}
-          <div className="rounded-3xl bg-gradient-to-br from-primary via-[#1D4A88] to-primary p-6 text-primary-foreground shadow-primary/20 shadow-xl">
-            <div className="flex items-center gap-2 font-semibold text-xs opacity-90">
-              <Plane className="size-4" />
-              <span>{t('landing.f3.when')}</span>
-            </div>
-            <h2 className="mt-2 font-bold text-2xl tracking-tight">
-              {t('exit.title')}
-            </h2>
-            <p className="mt-1 text-primary-foreground/80 text-sm">
-              {t('exit.subtitle')}
-            </p>
+        <WizardStart
+          icon={<Plane className="size-7 text-primary" />}
+          title={t('exit.startTitle')}
+          description={t('exit.startDesc')}
+          cta={t('exit.startCta')}
+          onStart={() => setStep(0)}
+        />
 
-            <div className="mt-4 flex flex-wrap gap-2 border-white/10 border-t pt-2 text-xs">
-              <span className="rounded-xl bg-white/15 px-3 py-1.5 backdrop-blur">
-                {departureDate
-                  ? `${t('profile.exitDate')}: ${formatKDate(departureDate)}`
-                  : t('home.exitNone')}
-              </span>
-              <span className="rounded-xl bg-white/15 px-3 py-1.5 backdrop-blur">
-                {totalMonths !== null
-                  ? `${t('home.monthsRecorded', { n: totalMonths })}`
-                  : t('common.unknownValue')}
-              </span>
+        {/* 이전 출국 확인 내역 */}
+        {pastResults.length > 0 && (
+          <section className="pc-rise mt-8 space-y-3">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <History className="size-4 text-primary" />
+                <h3 className="font-bold text-foreground text-sm">
+                  {t('exit.history.title')}
+                </h3>
+              </div>
+              <Link
+                href="/records"
+                className="font-bold text-primary text-xs hover:underline"
+              >
+                {t('records.openList')}
+              </Link>
             </div>
-          </div>
 
-          {/* 주요 확인 대상 안내 카드 */}
-          <div className="space-y-3 rounded-3xl border border-border/80 bg-card p-5 shadow-sm">
-            <h3 className="font-bold text-foreground text-sm">
-              {t('exit.checklist.title')}
-            </h3>
-            <div className="grid gap-2.5 text-muted-foreground text-xs">
-              <div className="flex items-start gap-2.5 rounded-2xl bg-muted/50 p-3">
-                <ShieldCheck className="mt-0.5 size-4 shrink-0 text-primary" />
-                <div>
-                  <strong className="font-semibold text-foreground">
-                    {t('exit.check1.title')}
-                  </strong>
-                  <p className="mt-0.5">{t('exit.check1.desc')}</p>
-                </div>
-              </div>
-              <div className="flex items-start gap-2.5 rounded-2xl bg-muted/50 p-3">
-                <Plane className="mt-0.5 size-4 shrink-0 text-info" />
-                <div>
-                  <strong className="font-semibold text-foreground">
-                    {t('exit.check2.title')}
-                  </strong>
-                  <p className="mt-0.5">{t('exit.check2.desc')}</p>
-                </div>
-              </div>
-              <div className="flex items-start gap-2.5 rounded-2xl bg-muted/50 p-3">
-                <Wallet className="mt-0.5 size-4 shrink-0 text-signal" />
-                <div>
-                  <strong className="font-semibold text-foreground">
-                    {t('exit.check3.title')}
-                  </strong>
-                  <p className="mt-0.5">{t('exit.check3.desc')}</p>
-                </div>
-              </div>
+            <div className="space-y-2.5">
+              {pastResults.slice(0, 3).map((r) => {
+                if (r.kind !== 'exit') return null;
+                return (
+                  <button
+                    key={r.id}
+                    type="button"
+                    onClick={() => setSelectedResult(r)}
+                    className="flex w-full items-center justify-between rounded-3xl border border-border/70 bg-card p-4 text-left shadow-xs backdrop-blur-md transition-colors hover:border-primary/40"
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className="flex size-11 items-center justify-center rounded-2xl bg-primary/10 text-primary shadow-xs">
+                        <Plane className="size-5" />
+                      </div>
+                      <div>
+                        <span className="font-bold text-foreground text-xs">
+                          {t('records.savedAt', {
+                            date: formatKDate(r.createdAt.split('T')[0]),
+                          })}
+                        </span>
+                        <p className="mt-0.5 text-[11px] text-muted-foreground">
+                          {t('records.exitLine', {
+                            done: r.readyCount,
+                            total: r.totalCount,
+                          })}
+                        </p>
+                      </div>
+                    </div>
+                    <ArrowRight className="size-4 text-muted-foreground" />
+                  </button>
+                );
+              })}
             </div>
-          </div>
+          </section>
+        )}
 
-          <Button
-            onClick={() => setStep(0)}
-            size="lg"
-            className="w-full rounded-2xl font-bold text-base shadow-lg shadow-primary/25"
-          >
-            {t('exit.step.start')}
-            <ArrowRight className="ml-2 size-5" />
-          </Button>
-        </div>
+        {/* 이전 출국 확인 결과 상세 다이얼로그 */}
+        <Dialog
+          open={selectedResult !== null}
+          onOpenChange={(open) => !open && setSelectedResult(null)}
+        >
+          <DialogContent className="z-[100] max-h-[85vh] overflow-y-auto rounded-3xl border border-border bg-card p-6 text-card-foreground shadow-2xl sm:max-w-lg">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2 font-bold text-base text-foreground">
+                <Plane className="size-5 text-primary" />
+                {selectedResult &&
+                  t('records.savedAt', {
+                    date: formatKDate(selectedResult.createdAt.split('T')[0]),
+                  })}
+              </DialogTitle>
+            </DialogHeader>
+
+            {selectedResult && selectedResult.kind === 'exit' && (
+              <div className="space-y-3 pt-2">
+                {selectedResult.claims && selectedResult.claims.length > 0 ? (
+                  selectedResult.claims.map((claim) => {
+                    const isReady =
+                      claim.status === '적용 가능성 있음' ||
+                      claim.status === '대상 후보';
+                    return (
+                      <div
+                        key={claim.id}
+                        className="space-y-3 rounded-3xl border border-border/80 bg-card p-5 shadow-sm"
+                      >
+                        <div>
+                          <h3 className="font-bold text-base text-foreground">
+                            {claim.title}
+                          </h3>
+                          {isReady ? (
+                            <span className="mt-1 inline-flex items-center gap-1 font-semibold text-signal text-xs">
+                              <CheckCircle2 className="size-3.5" />
+                              {claim.status}
+                            </span>
+                          ) : (
+                            <span className="mt-1 inline-flex items-center gap-1 font-semibold text-warn text-xs">
+                              <AlertTriangle className="size-3.5" />
+                              {claim.status}
+                            </span>
+                          )}
+                        </div>
+
+                        {claim.confirmed.length > 0 && (
+                          <div className="space-y-1 rounded-2xl bg-muted/40 p-3 text-xs">
+                            <span className="font-semibold text-foreground">
+                              확인 정보:
+                            </span>
+                            {claim.confirmed.map((item) => (
+                              <p key={item} className="text-muted-foreground">
+                                • {item}
+                              </p>
+                            ))}
+                          </div>
+                        )}
+
+                        {claim.nextAction && (
+                          <div className="space-y-1 rounded-2xl border border-primary/15 bg-primary/5 p-3 text-xs">
+                            <span className="font-bold text-primary">
+                              {t('exit.nextAction')}:
+                            </span>
+                            <p className="font-medium text-foreground">
+                              {claim.nextAction}
+                            </p>
+                          </div>
+                        )}
+
+                        {claim.documents && claim.documents.length > 0 && (
+                          <div className="space-y-1 pt-1 text-xs">
+                            <span className="font-semibold text-muted-foreground">
+                              {t('exit.docsRequired')}:
+                            </span>
+                            <div className="flex flex-wrap gap-1.5 pt-0.5">
+                              {claim.documents.map((doc) => (
+                                <span
+                                  key={doc}
+                                  className="rounded-lg bg-secondary px-2 py-1 font-medium text-[11px] text-secondary-foreground"
+                                >
+                                  {doc}
+                                </span>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })
+                ) : (
+                  <p className="text-muted-foreground text-xs">
+                    {t('records.exitLine', {
+                      done: selectedResult.readyCount,
+                      total: selectedResult.totalCount,
+                    })}
+                  </p>
+                )}
+              </div>
+            )}
+          </DialogContent>
+        </Dialog>
       </AppShell>
     );
   }
@@ -267,7 +380,7 @@ export default function ExitCheckPage() {
           </div>
           <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted">
             <div
-              className="h-full bg-primary transition-all duration-300"
+              className="h-full bg-primary transition-all duration-500"
               style={{ width: `${((step + 1) / STEP_TOTAL) * 100}%` }}
             />
           </div>
@@ -277,7 +390,7 @@ export default function ExitCheckPage() {
         {step === 0 && (
           <div className="space-y-4">
             <div className="space-y-4 rounded-3xl border border-border/80 bg-card p-5 shadow-sm">
-              <h2 className="font-bold text-base text-foreground">
+              <h2 className="font-bold text-foreground text-xl">
                 {t('exit.step0.header')}
               </h2>
               <p className="text-muted-foreground text-xs">
@@ -318,7 +431,7 @@ export default function ExitCheckPage() {
                   <span className="font-semibold">
                     {t('exit.step0.totalWorkPeriod')}
                   </span>
-                  <span className="font-extrabold">
+                  <span className="font-bold">
                     {totalMonths !== null
                       ? t('home.monthsRecorded', { n: totalMonths })
                       : t('common.unknownValue')}
@@ -333,7 +446,7 @@ export default function ExitCheckPage() {
         {step === 1 && (
           <div className="space-y-4">
             <div className="space-y-4 rounded-3xl border border-border/80 bg-card p-5 shadow-sm">
-              <h2 className="font-bold text-base text-foreground">
+              <h2 className="font-bold text-foreground text-xl">
                 {t('exit.step.insurance')}
               </h2>
 
@@ -462,7 +575,7 @@ export default function ExitCheckPage() {
         {step === 2 && (
           <div className="space-y-4">
             <div className="space-y-4 rounded-3xl border border-border/80 bg-card p-5 shadow-sm">
-              <h2 className="font-bold text-base text-foreground">
+              <h2 className="font-bold text-foreground text-xl">
                 {t('exit.step.pension')}
               </h2>
 
@@ -514,7 +627,7 @@ export default function ExitCheckPage() {
             {/* 결과 요약 카드 */}
             <div className="space-y-3 rounded-3xl border border-border/80 bg-card p-5 shadow-sm">
               <div className="flex items-center justify-between">
-                <h2 className="font-bold text-base text-foreground">
+                <h2 className="font-bold text-foreground text-xl">
                   {t('exit.resultHeading')}
                 </h2>
                 <span className="rounded-xl bg-signal/15 px-2.5 py-1 font-bold text-signal text-xs">
@@ -539,7 +652,7 @@ export default function ExitCheckPage() {
                   >
                     <div className="flex items-start justify-between gap-2">
                       <div className="min-w-0">
-                        <h3 className="font-bold text-foreground text-sm">
+                        <h3 className="font-bold text-base text-foreground">
                           {claim.title}
                         </h3>
                         <div className="mt-1 flex items-center gap-1.5 text-xs">

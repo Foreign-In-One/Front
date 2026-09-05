@@ -18,10 +18,10 @@ import { cn } from '@/lib/utils';
 
 const TABS = [
   { to: '/dashboard', key: 'tab.home', icon: Home },
+  { to: '/calendar', key: 'tab.calendar', icon: CalendarClock },
   { to: '/paycheck', key: 'tab.pay', icon: Wallet },
   { to: '/taxcheck', key: 'tab.tax', icon: Receipt },
   { to: '/exitcheck', key: 'tab.exit', icon: Plane },
-  { to: '/calendar', key: 'tab.calendar', icon: CalendarClock },
 ] as const;
 
 interface NavbarProps {
@@ -56,7 +56,7 @@ export function Navbar({ title, subtitle }: NavbarProps) {
               href="/records"
               aria-label={t('records.nav')}
               title={t('records.title')}
-              className="rounded-xl p-2 text-muted-foreground transition-colors hover:text-primary active:scale-95"
+              className="rounded-xl p-2 text-muted-foreground transition-colors hover:text-primary"
             >
               <History className="size-5" />
             </Link>
@@ -65,7 +65,7 @@ export function Navbar({ title, subtitle }: NavbarProps) {
               href="/profile"
               aria-label={t('profile.nav')}
               title={t('profile.title')}
-              className="rounded-xl p-2 text-muted-foreground transition-colors hover:text-primary active:scale-95"
+              className="rounded-xl p-2 text-muted-foreground transition-colors hover:text-primary"
             >
               <UserRound className="size-5" />
             </Link>
@@ -75,7 +75,7 @@ export function Navbar({ title, subtitle }: NavbarProps) {
         </div>
       </header>
 
-      <nav className="fixed inset-x-0 bottom-0 z-40 border-border border-t bg-card/95 shadow-lg backdrop-blur">
+      <nav className="fixed inset-x-0 bottom-0 z-40 border-border border-t bg-card/95 backdrop-blur">
         <ul className="mx-auto flex max-w-xl">
           {TABS.map((tab) => {
             const active = pathname === tab.to;
@@ -86,9 +86,9 @@ export function Navbar({ title, subtitle }: NavbarProps) {
                 <Link
                   href={tab.to}
                   className={cn(
-                    'flex flex-col items-center gap-1 py-2.5 font-semibold text-[10px] transition-all sm:text-[11px]',
+                    'flex flex-col items-center gap-1 py-2.5 font-medium text-[10px] transition-colors sm:text-[11px]',
                     active
-                      ? 'font-bold text-primary'
+                      ? 'text-primary'
                       : 'text-muted-foreground hover:text-foreground',
                   )}
                 >

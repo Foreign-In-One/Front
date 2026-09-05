@@ -444,7 +444,7 @@ export default function OnboardingPage() {
             {t('ob.done.sub')}
           </p>
           <Button
-            className="mt-8 h-13 w-full rounded-2xl font-bold text-base"
+            className="mt-8 h-14 w-full rounded-2xl font-bold text-base"
             onClick={() => router.push('/dashboard')}
           >
             {t('ob.done.cta')}
