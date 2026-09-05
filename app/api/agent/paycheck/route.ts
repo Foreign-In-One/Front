@@ -81,6 +81,13 @@ export async function POST(req: Request) {
             : "";
           const firstCard = d.employerQuestionCards?.[0];
 
+          const defaultReasons = [
+            "임금명세서 미기재 추가 공제 가능성 (기숙사비, 수도광열비, 식대, 4대보험 소급 정산 등 사전 미동의 공제)",
+            "가산수당(연장·야간·휴일근로 1.5배 가산) 또는 주휴수당 산정 누락/오차",
+            "사업장 급여 담당자의 단순 송금 입력 착오 또는 분할 이체",
+          ];
+          const reasonsList = (d.reasons && d.reasons.length > 0) ? d.reasons : defaultReasons;
+
           const report: AiPaycheckReportDto = {
             headline: diffWon
               ? `실제 입금액과 명세서 간 ${diffWon} 차액 원인 분석`
@@ -88,31 +95,56 @@ export async function POST(req: Request) {
             summary:
               d.summary ||
               (diffWon
-                ? `임금명세서와 실제 통장 입금액 사이에 ${diffWon}의 차액이 확인되었습니다.`
+                ? `임금명세서와 실제 통장 입금액 사이에 ${diffWon}의 차액이 확인되었습니다. 근로기준법 제43조(전액 지급의 원칙)에 따라 근로자의 사전 동의 없는 임의 공제는 제한되므로 구체적인 확인이 필요합니다.`
                 : "임금명세서와 실제 통장 입금액 사이에 차액이 확인되었습니다."),
-            causes: (d.reasons || []).map((r: string) => ({
-              title: r,
-              description: `확인된 사실: ${r}`,
-              category: "NET_PAY",
-            })),
+            causes: reasonsList.map((r: string) => {
+              const titlePart = r.includes("(") ? r.split("(")[0].trim() : r.split(":")[0].trim();
+              return {
+                title: titlePart || r,
+                description: r,
+                category: r.includes("공제") ? "DEDUCTION" : r.includes("수당") ? "ALLOWANCE" : "NET_PAY",
+              };
+            }),
             legalBasis: {
-              law: "근로기준법 제43조 (임금 지급의 원칙)",
-              description: "임금은 통화로 직접 근로자에게 그 전액을 지급하여야 하며 임의 공제는 제한됩니다.",
-              protectionNotice: "공제 사유가 명세서에 기재되지 않은 차액은 사업주에게 서면 내역을 요청하여 확인할 권리가 있습니다.",
+              law: "근로기준법 제43조 (임금 지급의 원칙) 및 제48조 (임금명세서 교부)",
+              description: "임금은 통화로 직접 근로자에게 그 전액을 정기일에 지급하여야 하며, 사전 서면 동의 없는 공제는 엄격히 제한됩니다.",
+              protectionNotice: "공제 사유가 명세서에 기재되지 않은 차액은 사업주에게 서면 내역 교부를 요청할 권리가 있습니다.",
             },
-            requiredEvidence: ["해당 월 임금명세서 사본", "은행 통장 거래내역서", "표준근로계약서 사본"],
-            nextActions: (d.nextActions || []).map((a: string, idx: number) => ({
-              step: idx + 1,
-              title: a,
-              action: a,
-              urgency: idx === 0 ? "HIGH" : "MEDIUM",
-            })),
+            requiredEvidence: (d.requiredEvidence && d.requiredEvidence.length > 0)
+              ? d.requiredEvidence
+              : ["해당 월 임금명세서 사본 (지급/공제 항목)", "은행 통장 거래내역서", "표준근로계약서 사본", "출퇴근 기록부 또는 근무일지"],
+            nextActions: (d.nextActions && d.nextActions.length > 0)
+              ? d.nextActions.map((a: string, idx: number) => {
+                  const colonIdx = a.indexOf(":");
+                  const title = colonIdx !== -1 ? a.slice(0, colonIdx).trim() : `${idx + 1}단계`;
+                  const action = colonIdx !== -1 ? a.slice(colonIdx + 1).trim() : a;
+                  return {
+                    step: idx + 1,
+                    title,
+                    action,
+                    urgency: idx === 0 ? "HIGH" : idx === 1 ? "HIGH" : idx === 2 ? "MEDIUM" : "LOW",
+                  };
+                })
+              : [
+                  {
+                    step: 1,
+                    title: "1단계: 증빙 확보",
+                    action: "해당 월 임금명세서 사본과 은행 통장 거래내역서를 확보합니다.",
+                    urgency: "HIGH",
+                  },
+                  {
+                    step: 2,
+                    title: "2단계: 사업주 정중 문의",
+                    action: "사장님 질문 카드를 활용하여 공제 사유를 정중히 문의합니다.",
+                    urgency: "HIGH",
+                  },
+                ],
             messageForEmployer: {
               korean:
                 firstCard?.koreanScript ||
                 (diffWon
-                  ? `안녕하세요 사장님, 이번 달 급여 중 임금명세서 실지급액과 통장 입금액 사이에 ${diffWon}의 차이가 확인되어 연락드렸습니다. 혹시 추가로 공제된 항목이 있는지 확인 부탁드립니다.`
-                  : "안녕하세요 사장님, 이번 달 급여 중 임금명세서 실지급액과 통장 입금액 사이에 차이가 확인되어 연락드렸습니다. 혹시 추가로 공제된 항목이 있는지 확인 부탁드립니다."),
+                  ? `안녕하세요 사장님, 이번 달 급여 중 임금명세서 실지급액과 통장 입금액 사이에 ${diffWon}의 차이가 확인되어 연락드렸습니다. 혹시 추가로 공제된 항목이나 확인이 필요한 부분이 있는지 알려주시면 감사하겠습니다.`
+                  : "안녕하세요 사장님, 이번 달 급여 중 임금명세서 실지급액과 통장 입금액 사이에 차이가 확인되어 연락드렸습니다. 혹시 추가로 공제된 항목이나 확인이 필요한 부분이 있는지 알려주시면 감사하겠습니다."),
               translated:
                 firstCard?.nativeScript ||
                 (diffWon

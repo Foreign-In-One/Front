@@ -667,13 +667,25 @@ export default function PayCheckPage() {
                       {t(FIELD_LABEL_KEYS[k])}
                     </span>
                     <Input
-                      type={k.includes("Date") || k.includes("Day") ? "text" : "number"}
-                      value={val ?? ""}
+                      type={k === "payDate" ? "date" : k === "payDay" ? "number" : "number"}
+                      min={k === "payDay" ? 1 : undefined}
+                      max={k === "payDay" ? 31 : undefined}
+                      value={
+                        k === "payDate"
+                          ? typeof val === "string" && val.includes("T")
+                            ? val.split("T")[0]
+                            : (val ?? "")
+                          : (val ?? "")
+                      }
                       onChange={(e) =>
                         updateField(
                           editingKind,
                           k,
-                          e.target.value ? (k.includes("Date") ? e.target.value : Number(e.target.value)) : null
+                          e.target.value
+                            ? k === "payDate"
+                              ? e.target.value
+                              : Number(e.target.value)
+                            : null
                         )
                       }
                       className="w-48 text-right text-xs font-bold rounded-2xl border border-input bg-background shadow-xs focus-visible:ring-2 focus-visible:ring-ring"
