@@ -14,11 +14,13 @@ import {
   type TaxConditions,
   type TaxResponse,
 } from '@/services/taxcheck-api';
+import { usePayCycle } from '@/state/paycycle-context';
 import { TAX_COPY, type TaxCopy } from './taxcheck-copy';
 import {
   emptyTaxForm,
   formFromTax,
   koreaYear,
+  shouldWarnNonTaxableIncome,
   type TaxForm,
   type TaxInputError,
   taxIdFromUrl,
@@ -27,7 +29,6 @@ import {
   validateTaxForm,
 } from './taxcheck-form';
 import { TaxResultView } from './taxcheck-result';
-import { usePayCycle } from '@/state/paycycle-context';
 
 type PageError = TaxInputError | 'read' | 'write' | 'uncertain' | 'url';
 type Pending = 'read' | 'analyze' | 'simulate' | null;
@@ -93,6 +94,7 @@ export default function TaxCheckPage() {
   const busy = pending !== null;
   const uncertain = error === 'uncertain' && !acknowledged;
   const displayed = scenario ?? original;
+  const showNonTaxableWarning = shouldWarnNonTaxableIncome(form);
 
   const loadSaved = useCallback(async (id: number) => {
     if (activeRequest.current) return;
@@ -465,6 +467,11 @@ export default function TaxCheckPage() {
                         ? copy.confirmScenario
                         : copy.confirm}
                     </label>
+                    {showNonTaxableWarning && (
+                      <output className="block rounded-xl border border-warn/40 bg-warn/10 p-3 text-sm">
+                        {copy.nonTaxableExceedsAnnual}
+                      </output>
+                    )}
                     <p className="text-muted-foreground text-xs leading-relaxed">
                       {copy.incomplete}
                     </p>
