@@ -99,7 +99,9 @@ export interface EmployerQuestionCardDto {
 export interface PaycheckExplainResponseDto {
   paycheckId?: number;
   caseType?: string;
+  headline?: string;
   summary: string;
+  documentCheckGuide?: string;
   reasons: string[];
   requiredEvidence?: string[];
   nextActions: string[];

@@ -4,6 +4,7 @@ import { won } from "@/lib/paycycle/format";
 export interface AiPaycheckReportDto {
   headline: string;
   summary: string;
+  documentCheckGuide?: string;
   causes: {
     title: string;
     description: string;
