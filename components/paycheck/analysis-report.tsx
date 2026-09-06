@@ -174,9 +174,27 @@ export function AnalysisReport({
           {aiReport && (
             <div className="space-y-4">
               <div className="rounded-2xl bg-primary/5 p-4 border border-primary/15 space-y-2">
-                <p className="text-xs font-black text-primary">{aiReport.headline}</p>
+                {aiReport.headline && aiReport.headline !== aiReport.summary && (
+                  <p className="text-xs font-black text-primary flex items-center gap-1.5">
+                    <span className="inline-block size-2 rounded-full bg-primary" />
+                    {aiReport.headline}
+                  </p>
+                )}
                 <p className="text-xs leading-relaxed font-medium text-foreground">{aiReport.summary}</p>
               </div>
+
+              {/* 🌟 추천 서류 대조 가이드 (동적 문서 확인 안내) */}
+              {aiReport.documentCheckGuide && (
+                <div className="rounded-2xl bg-amber-500/10 border border-amber-500/25 p-4 space-y-1.5">
+                  <div className="flex items-center gap-2 text-xs font-extrabold text-amber-800 dark:text-amber-400">
+                    <FileText className="size-4 shrink-0 text-amber-600 dark:text-amber-400" />
+                    <span>추천 서류 대조 가이드 (확인해볼 문서)</span>
+                  </div>
+                  <p className="text-xs leading-relaxed font-medium text-foreground pl-6">
+                    {aiReport.documentCheckGuide}
+                  </p>
+                </div>
+              )}
 
               {/* 가설 및 원인 분석 */}
               {aiReport.causes && aiReport.causes.length > 0 && (
