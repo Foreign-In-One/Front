@@ -246,7 +246,8 @@ export default function TaxCheckPage() {
         const nextYear = form.taxYear + 1;
         const taxDate = `${nextYear}-01-25`;
         const eventTitle = `${form.taxYear}년 귀속 연말정산 서류 제출 기한`;
-        const eventDesc = '회사 연말정산 담당자에게 소득·세액공제 증빙 서류 제출';
+        const eventDesc =
+          '회사 연말정산 담당자에게 소득·세액공제 증빙 서류 제출';
 
         addEvent({
           title: eventTitle,
@@ -303,12 +304,6 @@ export default function TaxCheckPage() {
   return (
     <AppShell title={t('tab.tax')} subtitle={copy.intro}>
       <div className="space-y-5 pb-6">
-        <aside className="space-y-2 rounded-2xl border border-border bg-card p-4 text-muted-foreground text-xs leading-relaxed">
-          <p>{copy.notice}</p>
-          <p>{copy.manual}</p>
-          <p>{copy.originalText}</p>
-        </aside>
-
         {busy && (
           <output aria-live="polite" className="text-muted-foreground text-sm">
             {pending === 'read'
