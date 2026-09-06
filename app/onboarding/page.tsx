@@ -18,13 +18,13 @@ import type {
 import { EMPTY_DATE } from '@/lib/paycycle/types';
 import { usePayCycle } from '@/state/paycycle-context';
 
-const NATIONALITIES = [
-  '베트남',
-  '캄보디아',
-  '태국',
-  '인도네시아',
-  '네팔',
-  '필리핀',
+const NATIONALITIES: { value: string; labelKey: string }[] = [
+  { value: '베트남', labelKey: 'ob.nat.vn' },
+  { value: '캄보디아', labelKey: 'ob.nat.kh' },
+  { value: '태국', labelKey: 'ob.nat.th' },
+  { value: '인도네시아', labelKey: 'ob.nat.id' },
+  { value: '네팔', labelKey: 'ob.nat.np' },
+  { value: '필리핀', labelKey: 'ob.nat.ph' },
 ];
 
 const DEFAULT_LANG: Record<string, LanguageCode> = {
@@ -196,7 +196,10 @@ export default function OnboardingPage() {
       valid: draft.nationality !== '',
       body: (
         <ChoiceGrid
-          options={NATIONALITIES}
+          options={NATIONALITIES.map((n) => ({
+            value: n.value,
+            label: t(n.labelKey),
+          }))}
           value={draft.nationality}
           onSelect={(v) => {
             set({ nationality: v, language: DEFAULT_LANG[v] ?? 'en' });
@@ -336,7 +339,13 @@ export default function OnboardingPage() {
       body: (
         <div className="space-y-3">
           <ChoiceGrid
-            options={['5', '10', '15', '20', '25', t('ob.payDay.lastDay')]}
+            options={[
+              ...['5', '10', '15', '20', '25'].map((n) => ({
+                value: n,
+                label: t('ob.payDay.nth', { n }),
+              })),
+              { value: t('ob.payDay.lastDay'), label: t('ob.payDay.lastDay') },
+            ]}
             value={
               draft.payDayUnknown
                 ? ''
@@ -353,7 +362,6 @@ export default function OnboardingPage() {
               });
               advance();
             }}
-            suffix="일"
           />
           <button
             type="button"
@@ -507,30 +515,27 @@ function ChoiceGrid({
   options,
   value,
   onSelect,
-  suffix = '',
 }: {
-  options: string[];
+  options: { value: string; label: string }[];
   value: string;
   onSelect: (value: string) => void;
-  suffix?: string;
 }) {
   return (
     <div className="grid grid-cols-2 gap-3">
       {options.map((option) => {
-        const active = value === option;
+        const active = value === option.value;
         return (
           <button
-            key={option}
+            key={option.value}
             type="button"
-            onClick={() => onSelect(option)}
+            onClick={() => onSelect(option.value)}
             className={`rounded-2xl border px-4 py-4 font-semibold text-base transition-all active:scale-[0.98] ${
               active
                 ? 'border-primary bg-primary text-primary-foreground shadow-md'
                 : 'border-border bg-card text-foreground'
             }`}
           >
-            {option}
-            {/^\d+$/.test(option) ? suffix : ''}
+            {option.label}
           </button>
         );
       })}
