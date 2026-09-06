@@ -88,15 +88,22 @@ export async function POST(req: Request) {
           ];
           const reasonsList = (d.reasons && d.reasons.length > 0) ? d.reasons : defaultReasons;
 
-          const report: AiPaycheckReportDto = {
-            headline: diffWon
-              ? `실제 입금액과 명세서 간 ${diffWon} 차액 원인 분석`
-              : "실제 입금액과 명세서 간 차액 원인 분석",
-            summary:
-              d.summary ||
-              (diffWon
+          const isBaseFinding = finding?.id === "base" || (finding?.title && finding.title.includes("기본급"));
+          const fallbackHeadline = isBaseFinding
+            ? (diffWon ? `계약 기본급과 명세서 기본급 간 ${diffWon} 차이 분석` : "계약 기본급과 명세서 기본급 간 차이 분석")
+            : (diffWon ? `실제 입금액과 명세서 간 ${diffWon} 차액 원인 분석` : "실제 입금액과 명세서 간 차액 원인 분석");
+
+          const fallbackSummary = isBaseFinding
+            ? (diffWon
+                ? `체결된 근로계약서 상의 기본급과 이번 달 임금명세서 기본급 사이에 ${diffWon}의 차이가 확인되었습니다. 근로기준법 제17조에 따라 소정근로시간 변경 또는 기본급 산정 기준에 대한 확인이 필요합니다.`
+                : "계약 기본급과 명세서 기본급 사이에 차이가 확인되었습니다.")
+            : (diffWon
                 ? `임금명세서와 실제 통장 입금액 사이에 ${diffWon}의 차액이 확인되었습니다. 근로기준법 제43조(전액 지급의 원칙)에 따라 근로자의 사전 동의 없는 임의 공제는 제한되므로 구체적인 확인이 필요합니다.`
-                : "임금명세서와 실제 통장 입금액 사이에 차액이 확인되었습니다."),
+                : "임금명세서와 실제 통장 입금액 사이에 차액이 확인되었습니다.");
+
+          const report: AiPaycheckReportDto = {
+            headline: d.summary || fallbackHeadline,
+            summary: d.summary || fallbackSummary,
             causes: reasonsList.map((r: string) => {
               const titlePart = r.includes("(") ? r.split("(")[0].trim() : r.split(":")[0].trim();
               return {
