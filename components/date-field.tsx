@@ -1,9 +1,15 @@
-"use client";
+'use client';
 
-import { useEffect, useState } from "react";
-import { Input } from "@/components/ui/input";
-import { formatKDate, parseKDate, validateDate, type DateRule } from "@/lib/paycycle/format";
-import type { DateValue } from "@/lib/paycycle/types";
+import { useEffect, useState } from 'react';
+import { Input } from '@/components/ui/input';
+import { useT } from '@/i18n';
+import {
+  type DateRule,
+  formatKDate,
+  parseKDate,
+  validateDate,
+} from '@/lib/paycycle/format';
+import type { DateValue } from '@/lib/paycycle/types';
 
 /** YYYY.MM.DD 직접입력 + 달력 선택 + 모름/미정 을 함께 지원하는 날짜 입력 */
 export function DateField({
@@ -11,7 +17,7 @@ export function DateField({
   onChange,
   rule,
   allowUnknown = true,
-  label = "날짜",
+  label = '날짜',
 }: {
   value: DateValue;
   onChange: (next: DateValue) => void;
@@ -19,19 +25,25 @@ export function DateField({
   allowUnknown?: boolean;
   label?: string;
 }) {
-  const [text, setText] = useState(value.value ? formatKDate(value.value) : "");
+  const { t, locale } = useT();
+  const [text, setText] = useState(value.value ? formatKDate(value.value) : '');
 
   useEffect(() => {
-    setText(value.value ? formatKDate(value.value) : "");
+    setText(value.value ? formatKDate(value.value) : '');
   }, [value.value]);
 
-  const error = value.unknown ? null : value.value ? validateDate(value.value, rule) : null;
-  const typedButUnparsed = !value.unknown && text.replace(/[^0-9]/g, "").length === 8 && !value.value;
+  const error = value.unknown
+    ? null
+    : value.value
+      ? validateDate(value.value, rule)
+      : null;
+  const typedButUnparsed =
+    !value.unknown && text.replace(/[^0-9]/g, '').length === 8 && !value.value;
 
   const commitText = (raw: string) => {
     setText(raw);
     const iso = parseKDate(raw);
-    onChange({ value: iso ?? "", unknown: false });
+    onChange({ value: iso ?? '', unknown: false });
   };
 
   return (
@@ -42,14 +54,15 @@ export function DateField({
           disabled={value.unknown}
           inputMode="numeric"
           placeholder="YYYY.MM.DD"
-          aria-label={`${label} 직접 입력`}
+          aria-label={t('date.manualAria', { label })}
           onChange={(e) => commitText(e.target.value)}
           className="h-14 flex-1 text-lg"
         />
         <Input
           type="date"
+          lang={locale}
           disabled={value.unknown}
-          aria-label={`${label} 달력 선택`}
+          aria-label={t('date.calendarAria', { label })}
           value={value.value}
           onChange={(e) => onChange({ value: e.target.value, unknown: false })}
           className="h-14 w-[9.5rem] text-base"
@@ -59,23 +72,31 @@ export function DateField({
       {allowUnknown ? (
         <button
           type="button"
-          onClick={() => onChange(value.unknown ? { value: "", unknown: false } : { value: "", unknown: true })}
-          className={`rounded-full border px-3.5 py-2 text-xs font-semibold transition-colors ${
+          onClick={() =>
+            onChange(
+              value.unknown
+                ? { value: '', unknown: false }
+                : { value: '', unknown: true },
+            )
+          }
+          className={`rounded-full border px-3.5 py-2 font-semibold text-xs transition-colors ${
             value.unknown
-              ? "border-primary bg-primary text-primary-foreground"
-              : "border-border bg-card text-muted-foreground"
+              ? 'border-primary bg-primary text-primary-foreground'
+              : 'border-border bg-card text-muted-foreground'
           }`}
         >
-          모름 / 아직 정해지지 않음
+          {t('date.unknown')}
         </button>
       ) : null}
 
       {typedButUnparsed ? (
-        <p className="text-xs font-semibold text-warn-foreground">
-          존재하지 않는 날짜입니다. 예: 2025.03.01
+        <p className="font-semibold text-warn-foreground text-xs">
+          {t('date.invalidExample')}
         </p>
       ) : null}
-      {error ? <p className="text-xs font-semibold text-warn-foreground">{error}</p> : null}
+      {error ? (
+        <p className="font-semibold text-warn-foreground text-xs">{error}</p>
+      ) : null}
     </div>
   );
 }

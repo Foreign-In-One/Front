@@ -160,21 +160,6 @@ export default function RecordsPage() {
   return (
     <AppShell title={t('records.title')} subtitle={t('records.subtitle')}>
       <div className="space-y-4">
-        <div className="space-y-2 rounded-2xl border border-border bg-card p-3 text-muted-foreground text-xs">
-          <p>{copy.notice}</p>
-          <p>{copy.serverText}</p>
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            onClick={refresh}
-            disabled={!current}
-          >
-            <RotateCcw className="size-3.5" aria-hidden="true" />
-            {copy.refresh}
-          </Button>
-        </div>
-
         <fieldset
           className="flex min-w-0 gap-2 rounded-2xl border-0 bg-muted/60 p-1.5 backdrop-blur"
           aria-label={t('records.title')}

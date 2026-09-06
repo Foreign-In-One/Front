@@ -135,19 +135,6 @@ export default function DashboardPage() {
       subtitle={t('home.myRights', { name: defaultNickname })}
     >
       <div className="space-y-5">
-        <section className="space-y-2 rounded-3xl border border-border/80 bg-card p-4 text-muted-foreground text-xs">
-          <p>{copy.notice}</p>
-          <p>{copy.serverText}</p>
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            disabled={!current}
-            onClick={() => setRevision((value) => value + 1)}
-          >
-            {copy.refresh}
-          </Button>
-        </section>
         {!current && (
           <output className="block py-10 text-center text-muted-foreground text-sm">
             {t('home.loading')}
