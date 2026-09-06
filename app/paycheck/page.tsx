@@ -32,6 +32,7 @@ import {
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
@@ -130,6 +131,15 @@ function isCandidateRecommended(kind: DocKind, label: string): boolean {
   return false;
 }
 
+function getCandidateTargetField(kind: DocKind, label: string): keyof DocFields {
+  const norm = (label || "").trim().toLowerCase();
+  if (norm.includes("기본급") || norm.includes("base") || norm.includes("월급")) return "basePay";
+  if (norm.includes("실지급") || norm.includes("실수령") || norm.includes("차인지급") || norm.includes("net") || norm.includes("입금")) return "netPay";
+  if (norm.includes("수당") || norm.includes("연장") || norm.includes("식대")) return "allowances";
+  if (norm.includes("공제")) return "deductions";
+  return kind === "contract" ? "basePay" : "netPay";
+}
+
 
 
 function defaultDoc(kind: DocKind, period: string): PayDocument {
@@ -200,6 +210,14 @@ export default function PayCheckPage() {
 
   // 이전 기록 상세 보기 다이얼로그 모달 상태
   const [selectedRecord, setSelectedRecord] = useState<PayRecord | null>(null);
+
+  // 감지된 금액 항목 설정 다이얼로그 모달 상태
+  const [selectedCandidate, setSelectedCandidate] = useState<{
+    kind: DocKind;
+    cand: CandidateAmountDto;
+    targetField: keyof DocFields;
+    amount: number;
+  } | null>(null);
 
   // 이전에 저장되거나 확인된 근로계약서 자동 탐색
   const savedContract = useMemo(() => {
@@ -512,64 +530,90 @@ export default function PayCheckPage() {
 
   const updateField = useCallback(
     (kind: DocKind, key: keyof DocFields, val: any) => {
-      const current = docs[kind] ?? defaultDoc(kind, period);
-      const nextFields: DocFields = { ...current.fields, [key]: val };
-
-      setDocs((prev) => ({
-        ...prev,
-        [kind]: {
-          ...(prev[kind] ?? defaultDoc(kind, period)),
-          fields: nextFields,
-        },
-      }));
-
-      syncDocumentExtractedData(kind, nextFields);
+      setDocs((prev) => {
+        const current = prev[kind] ?? defaultDoc(kind, period);
+        const nextFields: DocFields = { ...current.fields, [key]: val };
+        syncDocumentExtractedData(kind, nextFields);
+        return {
+          ...prev,
+          [kind]: {
+            ...current,
+            fields: nextFields,
+          },
+        };
+      });
     },
-    [docs, period, syncDocumentExtractedData]
+    [period, syncDocumentExtractedData]
+  );
+
+  const applyCandidateToField = useCallback(
+    (kind: DocKind, field: keyof DocFields, amount: number, label: string) => {
+      const fieldName = t(FIELD_LABEL_KEYS[field as keyof typeof FIELD_LABEL_KEYS] || "pay.field.basePay");
+
+      // 1. docs 상태 업데이트: 최신 fields 계산 및 note 갱신
+      setDocs((prev) => {
+        const current = prev[kind] ?? defaultDoc(kind, period);
+        const nextFields: DocFields = { ...current.fields, [field]: amount };
+
+        // 스마트 보정: 명세서인데 실지급액을 넣었고 기본급이 비어있으면 기본급도 같이 채워줌
+        if (kind === "statement" && field === "netPay" && (nextFields.basePay === null || nextFields.basePay === undefined)) {
+          nextFields.basePay = amount;
+        }
+
+        syncDocumentExtractedData(kind, nextFields);
+
+        return {
+          ...prev,
+          [kind]: {
+            ...current,
+            fields: nextFields,
+            confirmed: true,
+            note: `${label} (${fieldName}) 금액이 ${won(amount)}으로 변경되었습니다.`,
+          },
+        };
+      });
+
+      // 2. candidates 칩 상태 동기화: 화면의 칩 금액도 수정한 금액으로 즉시 갱신
+      setCandidates((prev) => {
+        const list = prev[kind] ?? [];
+        const exists = list.some((c) => c.label === label);
+        const updatedList = exists
+          ? list.map((c) => (c.label === label ? { ...c, amount } : c))
+          : [...list, { label, amount }];
+        return {
+          ...prev,
+          [kind]: updatedList,
+        };
+      });
+
+      toast.success(
+        t("pay.candidate.appliedToast", {
+          field: `${label} (${fieldName})`,
+          amount: won(amount),
+        })
+      );
+    },
+    [period, syncDocumentExtractedData, t]
+  );
+
+  const openCandidateModal = useCallback(
+    (kind: DocKind, cand: CandidateAmountDto) => {
+      const defaultTarget = getCandidateTargetField(kind, cand.label);
+      setSelectedCandidate({
+        kind,
+        cand,
+        targetField: defaultTarget,
+        amount: cand.amount,
+      });
+    },
+    []
   );
 
   const applyCandidate = useCallback(
     (kind: DocKind, cand: CandidateAmountDto) => {
-      const current = docs[kind] ?? defaultDoc(kind, period);
-      const nextFields: DocFields = { ...current.fields };
-
-      const norm = (cand.label || "").trim().toLowerCase();
-      if (norm.includes("기본급") || norm.includes("base") || norm.includes("월급")) {
-        nextFields.basePay = cand.amount;
-      } else if (norm.includes("실지급") || norm.includes("실수령") || norm.includes("차인지급") || norm.includes("net") || norm.includes("입금")) {
-        nextFields.netPay = cand.amount;
-        // 스마트 보정: 명세서인데 기본급(basePay)이 비어있으면, 실지급액을 기본급 기본값으로 자동 채워줌
-        if (kind === "statement" && (nextFields.basePay === null || nextFields.basePay === undefined)) {
-          nextFields.basePay = cand.amount;
-        }
-      } else if (norm.includes("수당") || norm.includes("연장") || norm.includes("식대")) {
-        nextFields.allowances = cand.amount;
-      } else if (norm.includes("공제")) {
-        nextFields.deductions = cand.amount;
-      } else {
-        const primaryField: keyof DocFields = kind === "contract" ? "basePay" : "netPay";
-        nextFields[primaryField] = cand.amount;
-      }
-
-      setDocs((prev) => ({
-        ...prev,
-        [kind]: {
-          ...(prev[kind] ?? defaultDoc(kind, period)),
-          fields: nextFields,
-        },
-      }));
-
-      syncDocumentExtractedData(kind, nextFields);
-
-      const fieldName = kind === "contract" ? t("pay.field.basePay") : t("pay.field.netPay");
-      toast.success(
-        t("pay.candidate.appliedToast", {
-          field: `${cand.label} (${fieldName})`,
-          amount: won(cand.amount),
-        })
-      );
+      openCandidateModal(kind, cand);
     },
-    [docs, period, syncDocumentExtractedData, t]
+    [openCandidateModal]
   );
 
   const handleUpload = async (kind: DocKind, file: File) => {
@@ -622,6 +666,125 @@ export default function PayCheckPage() {
     );
   }
 
+  const candidateModal = (
+    <Dialog
+      open={selectedCandidate !== null}
+      onOpenChange={(open) => !open && setSelectedCandidate(null)}
+    >
+      <DialogContent className="sm:max-w-md rounded-3xl p-6 border border-border bg-card text-card-foreground shadow-2xl z-[100]">
+        <DialogHeader>
+          <DialogTitle className="text-base font-extrabold text-foreground flex items-center gap-2">
+            <Sparkles className="size-5 text-primary" />
+            {t("pay.candidate.modalTitle")}
+          </DialogTitle>
+          <DialogDescription className="text-xs text-muted-foreground">
+            {t("pay.candidate.modalDesc")}
+          </DialogDescription>
+        </DialogHeader>
+
+        {selectedCandidate && (
+          <div className="space-y-4 pt-2">
+            {/* 1. 금액 확인 및 직접 수정 */}
+            <div className="space-y-1.5">
+              <div className="flex items-center justify-between">
+                <label className="text-xs font-bold text-muted-foreground">
+                  {t("pay.candidate.modalAmountLabel")}
+                </label>
+                <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-primary/10 text-primary">
+                  {translateCandidateLabel(selectedCandidate.cand.label, t)}
+                </span>
+              </div>
+              <div className="relative">
+                <Input
+                  type="number"
+                  value={selectedCandidate.amount || ""}
+                  onChange={(e) => {
+                    const val = Number(e.target.value) || 0;
+                    setSelectedCandidate((prev) => (prev ? { ...prev, amount: val } : null));
+                  }}
+                  className="h-11 rounded-2xl text-sm font-black pr-10 border border-input bg-background"
+                />
+                <span className="absolute right-3.5 top-3 text-xs font-bold text-muted-foreground">
+                  원
+                </span>
+              </div>
+              <p className="text-[11px] font-medium text-primary text-right">
+                {won(selectedCandidate.amount)}
+              </p>
+            </div>
+
+            {/* 2. 적용할 급여 요소 선택 */}
+            <div className="space-y-2">
+              <label className="text-xs font-bold text-muted-foreground">
+                {t("pay.candidate.modalTargetLabel")}
+              </label>
+              <div className="grid grid-cols-2 gap-2">
+                {[
+                  { field: "basePay", label: t("pay.field.basePay"), desc: "세전 기본 급여" },
+                  { field: "netPay", label: t("pay.field.netPay"), desc: "통장 실수령액" },
+                  { field: "allowances", label: t("pay.field.allowances"), desc: "연장·휴일 수당" },
+                  { field: "deductions", label: t("pay.field.deductions"), desc: "4대보험·세금 공제" },
+                ].map(({ field, label, desc }) => {
+                  const isSelected = selectedCandidate.targetField === field;
+                  return (
+                    <button
+                      key={field}
+                      type="button"
+                      onClick={() =>
+                        setSelectedCandidate((prev) =>
+                          prev ? { ...prev, targetField: field as keyof DocFields } : null
+                        )
+                      }
+                      className={`flex flex-col items-start p-3 rounded-2xl border text-left transition-all cursor-pointer ${
+                        isSelected
+                          ? "bg-primary text-primary-foreground border-primary shadow-xs ring-2 ring-primary/20"
+                          : "bg-muted/40 hover:bg-muted border-border/70 text-foreground"
+                      }`}
+                    >
+                      <span className="text-xs font-extrabold">{label}</span>
+                      <span
+                        className={`text-[10px] mt-0.5 ${
+                          isSelected ? "text-primary-foreground/80" : "text-muted-foreground"
+                        }`}
+                      >
+                        {desc}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* 3. 취소 및 적용 버튼 */}
+            <div className="flex items-center gap-2 pt-2">
+              <Button
+                variant="outline"
+                onClick={() => setSelectedCandidate(null)}
+                className="flex-1 rounded-2xl h-11 text-xs font-bold border-input"
+              >
+                {t("common.cancel")}
+              </Button>
+              <Button
+                onClick={() => {
+                  applyCandidateToField(
+                    selectedCandidate.kind,
+                    selectedCandidate.targetField,
+                    selectedCandidate.amount,
+                    selectedCandidate.cand.label
+                  );
+                  setSelectedCandidate(null);
+                }}
+                className="flex-1 rounded-2xl h-11 text-xs font-bold bg-gradient-to-r from-primary to-[#1D4A88] text-primary-foreground shadow-md shadow-primary/20"
+              >
+                {t("pay.candidate.modalApplyBtn")}
+              </Button>
+            </div>
+          </div>
+        )}
+      </DialogContent>
+    </Dialog>
+  );
+
   const manualDrawer = (
     <Drawer open={editingKind !== null} onOpenChange={(open) => !open && setEditingKind(null)}>
       <DrawerContent className="p-5">
@@ -641,20 +804,47 @@ export default function PayCheckPage() {
                   {candidates[editingKind].map((cand, idx) => {
                     const isRec = isCandidateRecommended(editingKind, cand.label);
                     const translatedLabel = translateCandidateLabel(cand.label, t);
+                    const targetField = getCandidateTargetField(editingKind, cand.label);
+                    const isCurrentVal = docs[editingKind]?.fields[targetField] === cand.amount;
+
                     return (
                       <button
                         key={idx}
                         type="button"
                         onClick={() => applyCandidate(editingKind, cand)}
-                        className="inline-flex items-center gap-1.5 rounded-xl bg-card hover:bg-primary/10 text-foreground hover:text-primary border border-border/80 hover:border-primary/40 px-3 py-1.5 text-xs font-bold shadow-2xs transition-all active:scale-95 cursor-pointer"
+                        className={`inline-flex items-center gap-1.5 rounded-xl border px-3 py-1.5 text-xs font-bold shadow-2xs transition-all active:scale-95 cursor-pointer ${
+                          isCurrentVal
+                            ? "bg-primary text-primary-foreground border-primary shadow-xs"
+                            : isRec
+                            ? "bg-primary/10 text-primary border-primary/40 hover:bg-primary/20"
+                            : "bg-card hover:bg-muted text-foreground border-border/80"
+                        }`}
                       >
                         {isRec && (
-                          <span className="text-[9px] font-black px-1.5 py-0.5 rounded-md bg-primary/15 text-primary">
+                          <span
+                            className={`text-[9px] font-black px-1.5 py-0.5 rounded-md ${
+                              isCurrentVal ? "bg-white/25 text-white" : "bg-primary/20 text-primary"
+                            }`}
+                          >
                             ✨ {t("pay.candidate.aiRecommended")}
                           </span>
                         )}
-                        <span className="text-muted-foreground text-[10px]">{translatedLabel}:</span>
-                        <span className="font-extrabold text-primary">{won(cand.amount)}</span>
+                        <span
+                          className={
+                            isCurrentVal
+                              ? "text-primary-foreground/90 text-[10px]"
+                              : "text-muted-foreground text-[10px]"
+                          }
+                        >
+                          {translatedLabel}:
+                        </span>
+                        <span
+                          className={
+                            isCurrentVal ? "font-black text-primary-foreground" : "font-extrabold text-primary"
+                          }
+                        >
+                          {won(cand.amount)}
+                        </span>
                       </button>
                     );
                   })}
@@ -846,7 +1036,7 @@ export default function PayCheckPage() {
 
     // 1. 분석 당일(오늘) 점검 완료 핀
     addEvent({
-      title: `${monthLabel(period)} 급여 점검 완료 (${won(depositNet)})`,
+      title: `${monthLabel(period, locale)} 급여 점검 완료 (${won(depositNet)})`,
       type: "PAYCHECK",
       date: todayStr,
       time: "09:00",
@@ -860,7 +1050,7 @@ export default function PayCheckPage() {
     // 2. 급여 입금일 일정 유지
     if (eventDate !== todayStr) {
       addEvent({
-        title: `${monthLabel(period)} 급여 입금 (${won(depositNet)})`,
+        title: `${monthLabel(period, locale)} 급여 입금 (${won(depositNet)})`,
         type: "PAYCHECK",
         date: eventDate,
         time: "09:00",
@@ -907,7 +1097,7 @@ export default function PayCheckPage() {
                 className="h-12 flex-1 rounded-2xl text-sm font-bold border border-input bg-background shadow-xs focus-visible:ring-2 focus-visible:ring-ring"
               />
               <span className="text-sm font-black text-primary">
-                {monthLabel(period)}
+                {monthLabel(period, locale)}
               </span>
             </div>
 
@@ -936,7 +1126,7 @@ export default function PayCheckPage() {
                   }}
                   className="mt-1 h-8 rounded-xl text-xs font-bold border-warn/40 bg-background text-foreground hover:bg-warn/15 shadow-2xs"
                 >
-                  직전 완료 월({monthLabel(getInitialPayPeriod(userPayDay))}) 선택하기
+                  직전 완료 월({monthLabel(getInitialPayPeriod(userPayDay), locale)}) 선택하기
                 </Button>
               </div>
             )}
@@ -982,7 +1172,7 @@ export default function PayCheckPage() {
                       <div>
                         <div className="flex items-center gap-2">
                           <span className="text-xs font-black text-foreground">
-                            {monthLabel(r.period)}
+                            {monthLabel(r.period, locale)}
                           </span>
                           <span
                             className={`rounded-full px-2 py-0.5 text-[10px] font-black ${
@@ -1023,7 +1213,7 @@ export default function PayCheckPage() {
                 <Receipt className="size-5 text-primary" />
                 {selectedRecord &&
                   t("pay.report.historyDetail", {
-                    month: monthLabel(selectedRecord.period),
+                    month: monthLabel(selectedRecord.period, locale),
                   })}
               </DialogTitle>
             </DialogHeader>
@@ -1048,16 +1238,16 @@ export default function PayCheckPage() {
                   <div className="rounded-2xl bg-muted/60 p-4 space-y-2.5">
                     <div className="flex items-center justify-between">
                       <h4 className="text-xs font-extrabold text-foreground">{t("pay.report.tableTitle")}</h4>
-                      <span className="text-[10px] font-semibold text-muted-foreground">계약서 · 명세서 · 실입금 대조</span>
+                      <span className="text-[10px] font-semibold text-muted-foreground">{t("pay.report.tableSub")}</span>
                     </div>
                     <div className="overflow-x-auto">
                       <table className="w-full text-xs text-left">
                         <thead>
                           <tr className="border-b border-border/50 text-[11px] font-bold text-muted-foreground">
-                            <th className="pb-2 font-extrabold">항목</th>
-                            <th className="pb-2 text-center">근로계약서</th>
-                            <th className="pb-2 text-center">임금명세서</th>
-                            <th className="pb-2 text-right">통장 실입금</th>
+                            <th className="pb-2 font-extrabold">{t("pay.report.thItem")}</th>
+                            <th className="pb-2 text-center">{t("rule.doc.contract")}</th>
+                            <th className="pb-2 text-center">{t("rule.doc.statement")}</th>
+                            <th className="pb-2 text-right">{t("rule.doc.deposit")}</th>
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-border/30">
@@ -1088,6 +1278,7 @@ export default function PayCheckPage() {
           </DialogContent>
         </Dialog>
         {manualDrawer}
+        {candidateModal}
       </AppShell>
     );
   }
@@ -1103,7 +1294,7 @@ export default function PayCheckPage() {
     const isBankAutoDeposit = currentKind === "deposit" && currentDoc?.source === "bank_auto";
 
     return (
-      <AppShell title={t("pay.title")} subtitle={monthLabel(period)}>
+      <AppShell title={t("pay.title")} subtitle={monthLabel(period, locale)}>
         {/* 상단 서류 준비 상태 직관 가이드 칩 */}
         <div className="mb-4 flex items-center justify-between rounded-3xl bg-card border border-border/70 p-4 shadow-xs backdrop-blur-md">
           {DOC_ORDER.map((k, idx) => {
@@ -1251,8 +1442,8 @@ export default function PayCheckPage() {
 
             {isDone && !isReading && !isBankAutoDeposit && (
               <div className="space-y-3 pt-1">
-                {/* 1. 업로드된 문서 요약 카드 */}
-                <div className="rounded-2xl bg-primary/5 border border-primary/20 p-4 text-xs font-semibold leading-relaxed text-foreground shadow-xs space-y-1.5">
+                {/* 1. 업로드된 문서 요약 카드 및 실시간 반영 급여 상세 */}
+                <div className="rounded-2xl bg-primary/5 border border-primary/20 p-4 text-xs font-semibold leading-relaxed text-foreground shadow-xs space-y-2.5">
                   <div className="flex items-center justify-between">
                     <p className="font-extrabold text-primary flex items-center gap-1.5">
                       <CheckCircle2 className="size-4 text-primary" />
@@ -1278,6 +1469,34 @@ export default function PayCheckPage() {
                   {currentDoc?.note && (
                     <p className="text-[11px] text-muted-foreground pt-0.5">{currentDoc.note}</p>
                   )}
+
+                  {/* 현재 문서에 반영된 급여 세부 내역 실시간 표시 카드 그리드 */}
+                  <div className="grid grid-cols-2 gap-2 pt-1 border-t border-primary/10">
+                    {currentDoc?.fields.basePay !== null && currentDoc?.fields.basePay !== undefined && (
+                      <div className="rounded-xl border border-border/70 bg-card/90 p-2.5 flex items-center justify-between shadow-2xs">
+                        <span className="text-[10px] font-bold text-muted-foreground">{t("pay.field.basePay")}</span>
+                        <span className="text-xs font-black text-foreground">{won(currentDoc.fields.basePay)}</span>
+                      </div>
+                    )}
+                    {currentDoc?.fields.netPay !== null && currentDoc?.fields.netPay !== undefined && (
+                      <div className="rounded-xl border border-primary/30 bg-primary/10 p-2.5 flex items-center justify-between shadow-2xs">
+                        <span className="text-[10px] font-bold text-primary">{t("pay.field.netPay")}</span>
+                        <span className="text-xs font-black text-primary">{won(currentDoc.fields.netPay)}</span>
+                      </div>
+                    )}
+                    {currentDoc?.fields.allowances !== null && currentDoc?.fields.allowances !== undefined && currentDoc.fields.allowances > 0 && (
+                      <div className="rounded-xl border border-border/70 bg-card/90 p-2.5 flex items-center justify-between shadow-2xs">
+                        <span className="text-[10px] font-bold text-muted-foreground">{t("pay.field.allowances")}</span>
+                        <span className="text-xs font-black text-foreground">{won(currentDoc.fields.allowances)}</span>
+                      </div>
+                    )}
+                    {currentDoc?.fields.deductions !== null && currentDoc?.fields.deductions !== undefined && currentDoc.fields.deductions > 0 && (
+                      <div className="rounded-xl border border-border/70 bg-card/90 p-2.5 flex items-center justify-between shadow-2xs">
+                        <span className="text-[10px] font-bold text-muted-foreground">{t("pay.field.deductions")}</span>
+                        <span className="text-xs font-black text-foreground">{won(currentDoc.fields.deductions)}</span>
+                      </div>
+                    )}
+                  </div>
                 </div>
 
                 {/* 2. 문서에서 감지된 금액 후보군 칩 UI (AI 스마트 추천 포함) */}
@@ -1291,8 +1510,8 @@ export default function PayCheckPage() {
                       {candidates[currentKind].map((cand, idx) => {
                         const isRec = isCandidateRecommended(currentKind, cand.label);
                         const translatedLabel = translateCandidateLabel(cand.label, t);
-                        const primaryField: keyof DocFields = currentKind === "contract" ? "basePay" : "netPay";
-                        const isCurrentVal = currentDoc?.fields[primaryField] === cand.amount;
+                        const targetField = getCandidateTargetField(currentKind, cand.label);
+                        const isCurrentVal = currentDoc?.fields[targetField] === cand.amount;
 
                         return (
                           <button
@@ -1343,6 +1562,7 @@ export default function PayCheckPage() {
           </div>
         </WizardStep>
         {manualDrawer}
+        {candidateModal}
       </AppShell>
     );
   }
@@ -1354,7 +1574,7 @@ export default function PayCheckPage() {
     ).length;
 
     return (
-      <AppShell title={t("pay.title")} subtitle={monthLabel(period)}>
+      <AppShell title={t("pay.title")} subtitle={monthLabel(period, locale)}>
         <WizardStep
           index={3}
           total={6}
@@ -1432,9 +1652,16 @@ export default function PayCheckPage() {
                     </div>
 
                     <div className="flex items-center gap-3">
-                      <span className="text-sm font-black text-primary">
-                        {val ? won(val) : "-"}
-                      </span>
+                      <div className="text-right">
+                        <span className="text-sm font-black text-primary">
+                          {val ? won(val) : "-"}
+                        </span>
+                        {kind === "statement" && doc?.fields.basePay && doc?.fields.netPay && doc.fields.basePay !== doc.fields.netPay && (
+                          <p className="text-[10px] font-semibold text-muted-foreground">
+                            {t("pay.field.basePay")}: {won(doc.fields.basePay)}
+                          </p>
+                        )}
+                      </div>
                       <Button
                         size="sm"
                         variant="ghost"
@@ -1459,6 +1686,7 @@ export default function PayCheckPage() {
           )}
         </WizardStep>
         {manualDrawer}
+        {candidateModal}
       </AppShell>
     );
   }
@@ -1466,7 +1694,7 @@ export default function PayCheckPage() {
   /* ---------------- Step 4: 세 자료 대조 분석 진행 중 (AI 체킹) ---------------- */
   if (step === 4 || analyzing) {
     return (
-      <AppShell title={t("pay.title")} subtitle={monthLabel(period)}>
+      <AppShell title={t("pay.title")} subtitle={monthLabel(period, locale)}>
         <div className="flex min-h-[50vh] flex-col items-center justify-center text-center">
           <div className="relative flex size-20 items-center justify-center rounded-3xl bg-primary/10 text-primary shadow-xs">
             <Loader2 className="size-10 animate-spin text-primary" />
@@ -1477,17 +1705,18 @@ export default function PayCheckPage() {
           </p>
         </div>
         {manualDrawer}
+        {candidateModal}
       </AppShell>
     );
   }
 
   /* ---------------- Step 5: 최종 3중 대조 분석 결과 레포트 ---------------- */
   return (
-    <AppShell title={t("pay.title")} subtitle={monthLabel(period)}>
+    <AppShell title={t("pay.title")} subtitle={monthLabel(period, locale)}>
       <div className="space-y-5 pc-rise">
         <div className="flex items-center justify-between rounded-3xl bg-card border border-border/70 p-4 shadow-xs backdrop-blur-md">
           <span className="text-xs font-bold text-muted-foreground">
-            {t("pay.report.periodLabel", { month: monthLabel(period) })}
+            {t("pay.report.periodLabel", { month: monthLabel(period, locale) })}
           </span>
           <div className="flex items-center gap-2">
             <Button
@@ -1524,10 +1753,10 @@ export default function PayCheckPage() {
               <div>
                 <h4 className="text-sm font-extrabold text-foreground flex items-center gap-1.5">
                   ✨ {t("pay.table")}
-                  <span className="text-[11px] font-medium text-muted-foreground">(계약서 ↔ 명세서 ↔ 통장입금 3중 대조)</span>
+                  <span className="text-[11px] font-medium text-muted-foreground">{t("pay.report.tableSub")}</span>
                 </h4>
                 <p className="text-[11px] font-medium text-muted-foreground mt-0.5">
-                  각 서류를 클릭하여 등록된 값이나 금액을 직접 확인하고 수정할 수 있습니다.
+                  {t("pay.report.tableHint")}
                 </p>
               </div>
 
@@ -1542,7 +1771,7 @@ export default function PayCheckPage() {
                       : "text-muted-foreground hover:text-foreground"
                   }`}
                 >
-                  3중 대조표
+                  {t("pay.report.tabTable")}
                 </button>
                 <button
                   type="button"
@@ -1553,7 +1782,7 @@ export default function PayCheckPage() {
                       : "text-muted-foreground hover:text-foreground"
                   }`}
                 >
-                  서류별 보기
+                  {t("pay.report.tabDocs")}
                 </button>
               </div>
             </div>
@@ -1566,8 +1795,8 @@ export default function PayCheckPage() {
                 className="inline-flex items-center gap-1.5 rounded-xl border border-primary/30 bg-primary/5 hover:bg-primary/10 px-3 py-1.5 text-xs font-bold text-primary transition-all shadow-2xs cursor-pointer active:scale-95"
               >
                 <FileText className="size-3.5" />
-                <span>근로계약서 확인·수정</span>
-                <span className="text-[10px] opacity-75">({docs.contract?.fields.basePay ? won(docs.contract.fields.basePay) : "미등록"})</span>
+                <span>{t("pay.report.btnCheckContract")}</span>
+                <span className="text-[10px] opacity-75">({docs.contract?.fields.basePay ? won(docs.contract.fields.basePay, locale) : t("common.unknown")})</span>
               </button>
 
               <button
@@ -1576,8 +1805,8 @@ export default function PayCheckPage() {
                 className="inline-flex items-center gap-1.5 rounded-xl border border-info/30 bg-info/5 hover:bg-info/10 px-3 py-1.5 text-xs font-bold text-info-foreground dark:text-info transition-all shadow-2xs cursor-pointer active:scale-95"
               >
                 <Receipt className="size-3.5" />
-                <span>임금명세서 확인·수정</span>
-                <span className="text-[10px] opacity-75">({docs.statement?.fields.netPay ? won(docs.statement.fields.netPay) : "미등록"})</span>
+                <span>{t("pay.report.btnCheckStatement")}</span>
+                <span className="text-[10px] opacity-75">({docs.statement?.fields.netPay ? won(docs.statement.fields.netPay, locale) : t("common.unknown")})</span>
               </button>
 
               <button
@@ -1586,8 +1815,8 @@ export default function PayCheckPage() {
                 className="inline-flex items-center gap-1.5 rounded-xl border border-border/80 bg-muted/60 hover:bg-muted px-3 py-1.5 text-xs font-bold text-foreground transition-all shadow-2xs cursor-pointer active:scale-95"
               >
                 <Landmark className="size-3.5" />
-                <span>통장 실입금 확인·수정</span>
-                <span className="text-[10px] opacity-75">({docs.deposit?.fields.netPay ? won(docs.deposit.fields.netPay) : "미등록"})</span>
+                <span>{t("pay.report.btnCheckDeposit")}</span>
+                <span className="text-[10px] opacity-75">({docs.deposit?.fields.netPay ? won(docs.deposit.fields.netPay, locale) : t("common.unknown")})</span>
               </button>
             </div>
 
@@ -1597,14 +1826,14 @@ export default function PayCheckPage() {
                 <table className="w-full text-xs text-left border-collapse">
                   <thead>
                     <tr className="border-b border-border/60 text-[11px] font-bold text-muted-foreground">
-                      <th className="py-2.5 pr-3 font-extrabold">항목</th>
+                      <th className="py-2.5 pr-3 font-extrabold">{t("pay.report.thItem")}</th>
                       <th className="py-2.5 px-2 text-center">
                         <button
                           type="button"
                           onClick={() => setEditingKind("contract")}
                           className="hover:text-primary underline-offset-2 hover:underline inline-flex items-center gap-1"
                         >
-                          근로계약서 📝
+                          {t("rule.doc.contract")} 📝
                         </button>
                       </th>
                       <th className="py-2.5 px-2 text-center">
@@ -1613,7 +1842,7 @@ export default function PayCheckPage() {
                           onClick={() => setEditingKind("statement")}
                           className="hover:text-primary underline-offset-2 hover:underline inline-flex items-center gap-1"
                         >
-                          임금명세서 📑
+                          {t("rule.doc.statement")} 📑
                         </button>
                       </th>
                       <th className="py-2.5 px-2 text-center">
@@ -1622,10 +1851,10 @@ export default function PayCheckPage() {
                           onClick={() => setEditingKind("deposit")}
                           className="hover:text-primary underline-offset-2 hover:underline inline-flex items-center gap-1"
                         >
-                          통장 실입금 🏦
+                          {t("rule.doc.deposit")} 🏦
                         </button>
                       </th>
-                      <th className="py-2.5 pl-2 text-right">대조 결과</th>
+                      <th className="py-2.5 pl-2 text-right">{t("pay.report.thResult")}</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-border/40">
@@ -1690,7 +1919,7 @@ export default function PayCheckPage() {
                         : "text-muted-foreground hover:text-foreground"
                     }`}
                   >
-                    근로계약서 📝
+                    {t("rule.doc.contract")} 📝
                   </button>
                   <button
                     type="button"
@@ -1701,7 +1930,7 @@ export default function PayCheckPage() {
                         : "text-muted-foreground hover:text-foreground"
                     }`}
                   >
-                    임금명세서 📑
+                    {t("rule.doc.statement")} 📑
                   </button>
                   <button
                     type="button"
@@ -1712,7 +1941,7 @@ export default function PayCheckPage() {
                         : "text-muted-foreground hover:text-foreground"
                     }`}
                   >
-                    통장 입금내역 🏦
+                    {t("rule.doc.deposit")} 🏦
                   </button>
                 </div>
 
@@ -1722,7 +1951,7 @@ export default function PayCheckPage() {
                     <div className="flex items-center justify-between border-b border-primary/15 pb-2.5">
                       <div className="flex items-center gap-2">
                         <FileText className="size-4 text-primary" />
-                        <span className="text-xs font-black text-foreground">근로계약서 등록 내역</span>
+                        <span className="text-xs font-black text-foreground">{t("pay.docTab.contractTitle")}</span>
                       </div>
                       <Button
                         size="sm"
@@ -1730,20 +1959,22 @@ export default function PayCheckPage() {
                         onClick={() => setEditingKind("contract")}
                         className="h-7 rounded-lg text-[11px] font-bold border-primary/30 text-primary hover:bg-primary/10"
                       >
-                        계약서 값 수정
+                        {t("pay.docTab.contractEdit")}
                       </Button>
                     </div>
                     <div className="grid grid-cols-2 gap-3 text-xs">
                       <div className="rounded-xl bg-background/80 p-3 border border-border/60">
-                        <span className="text-muted-foreground text-[11px] font-medium">약정 기본급</span>
+                        <span className="text-muted-foreground text-[11px] font-medium">{t("pay.docTab.agreedBasePay")}</span>
                         <p className="text-sm font-black text-foreground mt-0.5">
-                          {docs.contract?.fields.basePay ? won(docs.contract.fields.basePay) : "-"}
+                          {docs.contract?.fields.basePay ? won(docs.contract.fields.basePay, locale) : "-"}
                         </p>
                       </div>
                       <div className="rounded-xl bg-background/80 p-3 border border-border/60">
-                        <span className="text-muted-foreground text-[11px] font-medium">약정 급여 지급일</span>
+                        <span className="text-muted-foreground text-[11px] font-medium">{t("pay.docTab.agreedPayDay")}</span>
                         <p className="text-sm font-black text-primary mt-0.5">
-                          {docs.contract?.fields.payDay ? `매월 ${docs.contract.fields.payDay}일` : (userPayDay ? `매월 ${userPayDay}일` : "-")}
+                          {docs.contract?.fields.payDay
+                            ? t("pay.docTab.monthlyDay", { day: String(docs.contract.fields.payDay) })
+                            : (userPayDay ? t("pay.docTab.monthlyDay", { day: String(userPayDay) }) : "-")}
                         </p>
                       </div>
                     </div>
@@ -1755,7 +1986,7 @@ export default function PayCheckPage() {
                     <div className="flex items-center justify-between border-b border-info/20 pb-2.5">
                       <div className="flex items-center gap-2">
                         <Receipt className="size-4 text-info-foreground dark:text-info" />
-                        <span className="text-xs font-black text-foreground">임금명세서 추출 내역</span>
+                        <span className="text-xs font-black text-foreground">{t("pay.docTab.statementTitle")}</span>
                       </div>
                       <Button
                         size="sm"
@@ -1763,32 +1994,32 @@ export default function PayCheckPage() {
                         onClick={() => setEditingKind("statement")}
                         className="h-7 rounded-lg text-[11px] font-bold border-info/30 text-info-foreground hover:bg-info/10"
                       >
-                        명세서 값 수정
+                        {t("pay.docTab.statementEdit")}
                       </Button>
                     </div>
                     <div className="grid grid-cols-2 gap-3 text-xs">
                       <div className="rounded-xl bg-background/80 p-3 border border-border/60">
-                        <span className="text-muted-foreground text-[11px] font-medium">명세서 기본급</span>
+                        <span className="text-muted-foreground text-[11px] font-medium">{t("pay.docTab.statementBasePay")}</span>
                         <p className="text-sm font-black text-foreground mt-0.5">
-                          {docs.statement?.fields.basePay ? won(docs.statement.fields.basePay) : "-"}
+                          {docs.statement?.fields.basePay ? won(docs.statement.fields.basePay, locale) : "-"}
                         </p>
                       </div>
                       <div className="rounded-xl bg-background/80 p-3 border border-border/60">
-                        <span className="text-muted-foreground text-[11px] font-medium">연장/기타 수당</span>
+                        <span className="text-muted-foreground text-[11px] font-medium">{t("pay.docTab.allowances")}</span>
                         <p className="text-sm font-black text-foreground mt-0.5">
-                          {docs.statement?.fields.allowances ? won(docs.statement.fields.allowances) : "-"}
+                          {docs.statement?.fields.allowances ? won(docs.statement.fields.allowances, locale) : "-"}
                         </p>
                       </div>
                       <div className="rounded-xl bg-background/80 p-3 border border-border/60">
-                        <span className="text-muted-foreground text-[11px] font-medium">공제 총액</span>
+                        <span className="text-muted-foreground text-[11px] font-medium">{t("pay.docTab.deductions")}</span>
                         <p className="text-sm font-black text-destructive mt-0.5">
-                          {docs.statement?.fields.deductions ? won(docs.statement.fields.deductions) : "-"}
+                          {docs.statement?.fields.deductions ? won(docs.statement.fields.deductions, locale) : "-"}
                         </p>
                       </div>
                       <div className="rounded-xl bg-background/80 p-3 border border-border/60">
-                        <span className="text-muted-foreground text-[11px] font-medium">명세서 실지급액</span>
+                        <span className="text-muted-foreground text-[11px] font-medium">{t("pay.docTab.netPay")}</span>
                         <p className="text-sm font-black text-primary mt-0.5">
-                          {docs.statement?.fields.netPay ? won(docs.statement.fields.netPay) : "-"}
+                          {docs.statement?.fields.netPay ? won(docs.statement.fields.netPay, locale) : "-"}
                         </p>
                       </div>
                     </div>
@@ -1800,7 +2031,7 @@ export default function PayCheckPage() {
                     <div className="flex items-center justify-between border-b border-border/40 pb-2.5">
                       <div className="flex items-center gap-2">
                         <Landmark className="size-4 text-primary" />
-                        <span className="text-xs font-black text-foreground">통장 실입금 내역</span>
+                        <span className="text-xs font-black text-foreground">{t("pay.docTab.depositTitle")}</span>
                       </div>
                       <Button
                         size="sm"
@@ -1808,18 +2039,18 @@ export default function PayCheckPage() {
                         onClick={() => setEditingKind("deposit")}
                         className="h-7 rounded-lg text-[11px] font-bold border-input text-foreground hover:bg-muted"
                       >
-                        입금 내역 수정
+                        {t("pay.docTab.depositEdit")}
                       </Button>
                     </div>
                     <div className="grid grid-cols-2 gap-3 text-xs">
                       <div className="rounded-xl bg-background/80 p-3 border border-border/60">
-                        <span className="text-muted-foreground text-[11px] font-medium">통장 실입금액</span>
+                        <span className="text-muted-foreground text-[11px] font-medium">{t("pay.docTab.depositNetPay")}</span>
                         <p className="text-sm font-black text-primary mt-0.5">
-                          {docs.deposit?.fields.netPay ? won(docs.deposit.fields.netPay) : "-"}
+                          {docs.deposit?.fields.netPay ? won(docs.deposit.fields.netPay, locale) : "-"}
                         </p>
                       </div>
                       <div className="rounded-xl bg-background/80 p-3 border border-border/60">
-                        <span className="text-muted-foreground text-[11px] font-medium">실제 입금 일자</span>
+                        <span className="text-muted-foreground text-[11px] font-medium">{t("pay.docTab.actualDepositDate")}</span>
                         <p className="text-sm font-black text-foreground mt-0.5">
                           {docs.deposit?.fields.payDate || "-"}
                         </p>
@@ -1850,6 +2081,7 @@ export default function PayCheckPage() {
       </div>
 
       {manualDrawer}
+      {candidateModal}
     </AppShell>
   );
 }

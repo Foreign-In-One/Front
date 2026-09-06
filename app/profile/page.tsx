@@ -1,9 +1,9 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useState, useEffect, useMemo } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { CalendarClock, Globe, Trash2, UserRound } from "lucide-react";
+import { CalendarClock, Globe, Trash2, UserRound, Save, Loader2, CheckCircle2 } from "lucide-react";
 import { toast } from "sonner";
 import { AppShell } from "@/components/app-shell";
 import { DateField } from "@/components/date-field";
@@ -19,24 +19,11 @@ import {
 } from "@/components/ui/dialog";
 import { usePayCycle } from "@/state/paycycle-context";
 import { useT, LOCALES, type UiLocale } from "@/i18n";
+import { CountrySelect } from "@/components/country-select";
 import { VISA_CODES, visaInfo } from "@/i18n/visa";
 import { dDay } from "@/lib/paycycle/rule-engine";
-import type { EmploymentStatus } from "@/lib/paycycle/types";
-
-const BASE_NATIONALITIES = [
-  "베트남",
-  "캄보디아",
-  "태국",
-  "인도네시아",
-  "네팔",
-  "필리핀",
-  "미얀마",
-  "몽골",
-  "스리랑카",
-  "우즈베키스탄",
-  "중국",
-  "방글라데시",
-];
+import { updateProfileApi } from "@/services/api";
+import type { EmploymentStatus, UserProfile, EmploymentProfile } from "@/lib/paycycle/types";
 
 const STATUSES: EmploymentStatus[] = ["PRE_EMPLOYMENT", "EMPLOYED", "SEPARATED", "CHANGING"];
 
@@ -51,13 +38,47 @@ function getStatusLabel(status: string | undefined, t: any): string {
 }
 
 export default function ProfilePage() {
-  const { state, hydrated, updateProfile, updateEmployment, resetAll } = usePayCycle();
+  const { state, hydrated, saveProfile, resetAll } = usePayCycle();
   const { t, locale, setLocale } = useT();
   const router = useRouter();
-  const [pendingStatus, setPendingStatus] = useState<EmploymentStatus | null>(null);
 
-  const profile = state.profile;
-  const employment = state.employment;
+  const [pendingStatus, setPendingStatus] = useState<EmploymentStatus | null>(null);
+  const [draftProfile, setDraftProfile] = useState<UserProfile | null>(null);
+  const [draftEmployment, setDraftEmployment] = useState<EmploymentProfile | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
+
+  // 초기 로딩 또는 글로벌 state 변경 시 draft 동기화
+  useEffect(() => {
+    if (state.profile && !draftProfile) {
+      setDraftProfile(state.profile);
+    }
+    if (state.employment && !draftEmployment) {
+      setDraftEmployment(state.employment);
+    }
+  }, [state.profile, state.employment, draftProfile, draftEmployment]);
+
+  const profile = draftProfile || state.profile;
+  const employment = draftEmployment || state.employment;
+
+  // 수정사항 존재 여부(isDirty) 계산
+  const isDirty = useMemo(() => {
+    if (!state.profile || !state.employment || !draftProfile || !draftEmployment) return false;
+    const p1 = state.profile;
+    const p2 = draftProfile;
+    const e1 = state.employment;
+    const e2 = draftEmployment;
+
+    return (
+      p1.nickname !== p2.nickname ||
+      p1.nationality !== p2.nationality ||
+      p1.visa !== p2.visa ||
+      e1.status !== e2.status ||
+      e1.workplace !== e2.workplace ||
+      e1.workStartDate.value !== e2.workStartDate.value ||
+      e1.payDay !== e2.payDay ||
+      e1.exitDate.value !== e2.exitDate.value
+    );
+  }, [state.profile, state.employment, draftProfile, draftEmployment]);
 
   if (!hydrated) {
     return (
@@ -86,13 +107,36 @@ export default function ProfilePage() {
   const exitIso =
     employment.exitDate.value && !employment.exitDate.unknown ? employment.exitDate.value : null;
 
-  const nationalityOptions = useMemo(() => {
-    const list = [...BASE_NATIONALITIES];
-    if (profile?.nationality && !list.includes(profile.nationality)) {
-      list.push(profile.nationality);
+  // '수정사항 적용' 클릭 핸들러: DB 저장 API 호출 후 글로벌 Context 반영
+  const handleApplyChanges = async () => {
+    if (!draftProfile || !draftEmployment) return;
+    setIsSaving(true);
+    try {
+      // 1. Spring Boot 백엔드 DB 저장 (PATCH /api/profile)
+      await updateProfileApi({
+        name: draftProfile.nickname,
+        nationality: draftProfile.nationality,
+        visaType: draftProfile.visa,
+        entryDate: draftEmployment.entryDate.value || null,
+        employmentStatus: draftEmployment.status,
+        companyName: draftEmployment.workplace,
+        workStartDate: draftEmployment.workStartDate.value || null,
+        payday: draftEmployment.payDay ?? 25,
+        expectedExitDate: draftEmployment.exitDate.value || null,
+        language: draftProfile.language || "ko",
+      });
+
+      // 2. 프론트엔드 전역 상태 및 로컬 스토리지 동기화
+      saveProfile(draftProfile, draftEmployment);
+
+      toast.success(t("profile.applyChangesDone"));
+    } catch (err) {
+      console.error("Profile update failed:", err);
+      toast.error(t("profile.applyChangesError"));
+    } finally {
+      setIsSaving(false);
     }
-    return list;
-  }, [profile?.nationality]);
+  };
 
   return (
     <AppShell title={t("profile.title")} subtitle={t("profile.subtitle")}>
@@ -113,32 +157,31 @@ export default function ProfilePage() {
         <ProfileField label={t("profile.nickname")}>
           <Input
             value={profile.nickname}
-            onChange={(e) => updateProfile({ nickname: e.target.value })}
+            onChange={(e) =>
+              setDraftProfile((prev) => (prev ? { ...prev, nickname: e.target.value } : null))
+            }
             className="rounded-2xl text-xs font-bold border border-input bg-card shadow-xs focus-visible:ring-2 focus-visible:ring-ring"
           />
         </ProfileField>
       </ProfileSection>
 
-      {/* 2. 국적 / 체류자격 (비자) */}
-      <ProfileSection title={t("profile.sec.visa")}>
+      {/* 2. 국적 / 체류자격 (비자) - 드롭다운이 아래 섹션에 가려지지 않도록 relative z-30 */}
+      <ProfileSection title={t("profile.sec.visa")} className="relative z-30">
         <ProfileField label={t("profile.nationality")}>
-          <select
+          <CountrySelect
             value={profile.nationality}
-            onChange={(e) => updateProfile({ nationality: e.target.value })}
-            className="w-full rounded-2xl border border-input bg-card p-3.5 text-xs font-bold text-foreground shadow-xs focus:ring-2 focus:ring-ring"
-          >
-            {nationalityOptions.map((c) => (
-              <option key={c} value={c}>
-                {c}
-              </option>
-            ))}
-          </select>
+            onChange={(val) =>
+              setDraftProfile((prev) => (prev ? { ...prev, nationality: val } : null))
+            }
+          />
         </ProfileField>
 
         <ProfileField label={t("profile.visa")}>
           <select
             value={profile.visa}
-            onChange={(e) => updateProfile({ visa: e.target.value })}
+            onChange={(e) =>
+              setDraftProfile((prev) => (prev ? { ...prev, visa: e.target.value } : null))
+            }
             className="w-full rounded-2xl border border-input bg-card p-3.5 text-xs font-bold text-foreground shadow-xs focus:ring-2 focus:ring-ring"
           >
             {VISA_CODES.map((v) => (
@@ -156,7 +199,7 @@ export default function ProfilePage() {
       </ProfileSection>
 
       {/* 3. 근로상태 & 사업장 & 근무 시작일 & 급여일 & 예상 출국일 */}
-      <ProfileSection title={t("profile.sec.work")}>
+      <ProfileSection title={t("profile.sec.work")} className="relative z-10">
         <ProfileField label={t("profile.status")}>
           <div className="grid grid-cols-2 gap-2.5">
             {STATUSES.map((st) => (
@@ -182,7 +225,9 @@ export default function ProfilePage() {
         <ProfileField label={t("profile.workplace")}>
           <Input
             value={employment.workplace}
-            onChange={(e) => updateEmployment({ workplace: e.target.value })}
+            onChange={(e) =>
+              setDraftEmployment((prev) => (prev ? { ...prev, workplace: e.target.value } : null))
+            }
             className="rounded-2xl text-xs font-bold border border-input bg-card shadow-xs focus-visible:ring-2 focus-visible:ring-ring"
           />
         </ProfileField>
@@ -191,7 +236,9 @@ export default function ProfilePage() {
           <DateField
             label={t("profile.workStart")}
             value={employment.workStartDate}
-            onChange={(next) => updateEmployment({ workStartDate: next })}
+            onChange={(next) =>
+              setDraftEmployment((prev) => (prev ? { ...prev, workStartDate: next } : null))
+            }
             rule={{ noFuture: true }}
           />
         </ProfileField>
@@ -205,9 +252,14 @@ export default function ProfilePage() {
               placeholder={t("ob.q.payDay")}
               value={employment.payDay ?? ""}
               onChange={(e) =>
-                updateEmployment({
-                  payDay: e.target.value ? Number.parseInt(e.target.value, 10) : null,
-                })
+                setDraftEmployment((prev) =>
+                  prev
+                    ? {
+                        ...prev,
+                        payDay: e.target.value ? Number.parseInt(e.target.value, 10) : null,
+                      }
+                    : null
+                )
               }
               className="rounded-2xl text-xs font-bold border border-input bg-card shadow-xs focus-visible:ring-2 focus-visible:ring-ring"
             />
@@ -219,14 +271,16 @@ export default function ProfilePage() {
           <DateField
             label={t("profile.exitDate")}
             value={employment.exitDate}
-            onChange={(next) => updateEmployment({ exitDate: next })}
+            onChange={(next) =>
+              setDraftEmployment((prev) => (prev ? { ...prev, exitDate: next } : null))
+            }
             rule={{ noPast: true }}
           />
         </ProfileField>
       </ProfileSection>
 
       {/* 4. 언어 선택 */}
-      <ProfileSection title={t("common.language")}>
+      <ProfileSection title={t("common.language")} className="relative z-0">
         <div className="grid grid-cols-2 gap-2.5">
           {LOCALES.map((l) => (
             <button
@@ -246,11 +300,41 @@ export default function ProfilePage() {
         </div>
       </ProfileSection>
 
-      {/* 초기화 버튼 */}
-      <div className="mt-6">
+      {/* 하단 액션 버튼 영역 */}
+      <div className="mt-6 space-y-3">
+        {/* 수정사항 적용 버튼 */}
+        <Button
+          type="button"
+          disabled={!isDirty || isSaving}
+          onClick={handleApplyChanges}
+          className={`w-full h-14 rounded-2xl text-sm font-black transition-all flex items-center justify-center gap-2 ${
+            isDirty
+              ? "bg-gradient-to-r from-primary via-[#1A417A] to-primary text-primary-foreground shadow-xl shadow-primary/25 hover:scale-[1.01] active:scale-[0.99] cursor-pointer"
+              : "bg-muted/70 text-muted-foreground border border-border/50 cursor-not-allowed opacity-70"
+          }`}
+        >
+          {isSaving ? (
+            <>
+              <Loader2 className="size-5 animate-spin" />
+              <span>{t("profile.applying")}</span>
+            </>
+          ) : (
+            <>
+              <Save className="size-5" />
+              <span>{t("profile.applyChanges")}</span>
+              {isDirty && (
+                <span className="ml-1.5 rounded-full bg-white/25 px-2 py-0.5 text-[11px] font-bold text-white shadow-xs">
+                  {t("profile.modifiedBadge")}
+                </span>
+              )}
+            </>
+          )}
+        </Button>
+
+        {/* 초기화 버튼 */}
         <Button
           variant="ghost"
-          className="w-full h-13 rounded-2xl text-xs font-bold text-destructive bg-destructive/5 hover:bg-destructive/10 shadow-xs transition-all"
+          className="w-full h-12 rounded-2xl text-xs font-bold text-destructive bg-destructive/5 hover:bg-destructive/10 shadow-xs transition-all"
           onClick={() => {
             resetAll();
             toast.success(t("profile.resetDone"));
@@ -290,8 +374,9 @@ export default function ProfilePage() {
               className="rounded-2xl bg-gradient-to-r from-primary to-[#1D4A88] text-primary-foreground text-xs font-bold shadow-md shadow-primary/20 hover:scale-[1.01] transition-all"
               onClick={() => {
                 if (pendingStatus) {
-                  updateEmployment({ status: pendingStatus });
-                  toast.success(t("common.done"));
+                  setDraftEmployment((prev) =>
+                    prev ? { ...prev, status: pendingStatus } : null
+                  );
                   setPendingStatus(null);
                 }
               }}

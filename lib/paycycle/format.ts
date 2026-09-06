@@ -1,13 +1,26 @@
 import type { DateValue } from "./types";
 
-export function won(value: number | null | undefined): string {
-  if (value === null || value === undefined || Number.isNaN(Number(value))) return "확인 불가";
-  return `${Math.round(value).toLocaleString("ko-KR")}원`;
+export function won(value: number | null | undefined, locale?: string): string {
+  if (value === null || value === undefined || Number.isNaN(Number(value))) {
+    if (locale === "en") return "Unavailable";
+    if (locale === "vi") return "Không xác định";
+    if (locale === "zh") return "无法确认";
+    return "확인 불가";
+  }
+  const num = Math.round(value);
+  if (locale === "en") return `${num.toLocaleString("en-US")} KRW`;
+  if (locale === "vi") return `${num.toLocaleString("vi-VN")} won`;
+  if (locale === "zh") return `${num.toLocaleString("zh-CN")} 韩元`;
+  return `${num.toLocaleString("ko-KR")}원`;
 }
 
-export function wonOrDash(value: number | null | undefined): string {
+export function wonOrDash(value: number | null | undefined, locale?: string): string {
   if (value === null || value === undefined || Number.isNaN(Number(value))) return "—";
-  return `${Math.round(value).toLocaleString("ko-KR")}원`;
+  const num = Math.round(value);
+  if (locale === "en") return `${num.toLocaleString("en-US")} KRW`;
+  if (locale === "vi") return `${num.toLocaleString("vi-VN")} won`;
+  if (locale === "zh") return `${num.toLocaleString("zh-CN")} 韩元`;
+  return `${num.toLocaleString("ko-KR")}원`;
 }
 
 /** 화면 표기는 항상 YYYY.MM.DD */
@@ -52,12 +65,26 @@ export function shortDate(iso: string | null | undefined): string {
   return `${m}.${d}`;
 }
 
-export function monthLabel(period: string | null | undefined): string {
+export function monthLabel(period: string | null | undefined, locale?: string): string {
   if (!period || typeof period !== "string" || !period.includes("-")) {
     return "";
   }
   const [y, m] = period.split("-");
-  return `${y}년 ${Number(m)}월`;
+  const monthNum = Number(m);
+  if (locale === "vi") {
+    return `Tháng ${monthNum} năm ${y}`;
+  }
+  if (locale === "en") {
+    const monthNames = [
+      "January", "February", "March", "April", "May", "June",
+      "July", "August", "September", "October", "November", "December"
+    ];
+    return `${monthNames[monthNum - 1] || monthNum} ${y}`;
+  }
+  if (locale === "zh") {
+    return `${y}年${monthNum}月`;
+  }
+  return `${y}년 ${monthNum}월`;
 }
 
 export function periodOf(date?: Date | null): string {

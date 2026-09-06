@@ -29,6 +29,75 @@ export interface AiPaycheckReportDto {
   };
 }
 
+export function isInsufficientEmployerMessage(msg?: string): boolean {
+  if (!msg) return true;
+  const trimmed = msg.trim();
+  if (trimmed.length < 35) return true;
+  if (
+    trimmed === "급여 차이에 대한 문의" ||
+    trimmed === "급여 차액에 대한 문의" ||
+    trimmed === "급여 차액 확인 요청" ||
+    trimmed === "I would like to inquire about the discrepancy in my salary." ||
+    (trimmed.startsWith("급여 차이") && trimmed.length < 30)
+  ) {
+    return true;
+  }
+  return false;
+}
+
+export function getEmployerMessageTranslation(id: string, diffStr: string, per: string, loc: string): string {
+  const diffVi = diffStr ? ` khoảng ${diffStr}` : "";
+  const diffZh = diffStr ? `约 ${diffStr}` : "";
+  const diffEn = diffStr ? ` of about ${diffStr}` : "";
+
+  if (loc === "vi") {
+    if (id === "net") {
+      return `Xin chào giám đốc, em xin chân thành cảm ơn giám đốc đã vất vả và chuyển lương ${per || "tháng này"} cho em. Khi kiểm tra tài khoản, em thấy số tiền thực lĩnh ghi trên phiếu lương và số tiền thực tế nhận vào tài khoản ngân hàng có khoản chênh lệch${diffVi}. Không biết công ty có khấu trừ thêm khoản nào ngoài phiếu lương như tiền ký túc xá, tiền ăn, bảo hiểm truy thu hay có nhầm lẫn trong quá trình chuyển khoản không ạ? Khi nào thuận tiện, nhờ giám đốc xem lại giúp em với ạ. Em xin lỗi vì đã làm phiền giám đốc trong lúc bận rộn. Em cảm ơn giám đốc rất nhiều!`;
+    }
+    if (id === "base") {
+      return `Xin chào giám đốc, em xin chân thành cảm ơn giám đốc đã luôn quan tâm và giúp đỡ em trong công việc. Khi đối chiếu chi tiết lương ${per || "tháng này"}, em nhận thấy có khoản chênh lệch${diffVi} giữa mức lương cơ bản ghi trong Điều 4 của Hợp đồng lao động và mức lương cơ bản trên phiếu lương. Không biết có sự thay đổi nào về cách tính giờ làm việc quy định hay tiêu chuẩn lương cơ bản không ạ? Khi nào thuận tiện, nhờ giám đốc kiểm tra lại giúp em với ạ. Em xin cảm ơn rất nhiều!`;
+    }
+    if (id === "deduction") {
+      return `Xin chào giám đốc, em cảm ơn giám đốc đã luôn giúp đỡ. Khi xem các khoản khấu trừ trên phiếu lương ${per || "tháng này"}, em thấy tổng tiền khấu trừ có tăng so với trước. Nhờ giám đốc giải thích giúp em chi tiết các khoản trừ như bảo hiểm, ký túc xá hay tiền ăn khi thuận tiện ạ. Em xin cảm ơn!`;
+    }
+    if (id === "paydate") {
+      return `Xin chào giám đốc, em cảm ơn giám đốc đã luôn quan tâm. Đã qua ngày trả lương theo hợp đồng nhưng tài khoản của em vẫn chưa nhận được tiền lương ${per || "tháng này"}. Nhờ giám đốc kiểm tra giúp em xem có điều chỉnh lịch chuyển do ngày nghỉ hay có vướng mắc gì không ạ. Em cảm ơn giám đốc!`;
+    }
+    return `Xin chào giám đốc, khi kiểm tra chi tiết lương ${per || "tháng này"}, em thấy có khoản chênh lệch${diffVi} cần đối chiếu giữa hợp đồng và thực nhận. Khi nào thuận tiện nhờ giám đốc kiểm tra giúp em với ạ. Em xin cảm ơn!`;
+  }
+  if (loc === "zh") {
+    if (id === "net") {
+      return `老板您好，辛苦您了，非常感谢您按时发放${per || "本月"}的工资。我在核对实到账目时注意到，工资条上载明的实发金额与我的银行账户实际到账金额之间存在${diffZh ? `约 ${diffZh}` : "一定"}的差额，因此想向您礼貌地咨询一下。想请问是否有未在明细中列出的扣款项目（如宿舍费、餐费、四大保险补扣等），或者是转账过程中出现了小差错？百忙之中给您添麻烦了，方便时请您帮忙查验一下。非常感谢老板一直以来的关照！`;
+    }
+    if (id === "base") {
+      return `老板您好，非常感谢您在工作中一直以来对我的关照与支持。我在核对${per || "本月"}的工资明细时发现，劳动合同第四条约定的基本工资与本月收到的工资条上的基本工资之间存在${diffZh ? `约 ${diffZh}` : "一定"}的差额，因此想向您礼貌地请教一下。想请问是否因法定工作时间核算或基本工资计算标准有所调整呢？百忙之中打扰您十分抱歉，方便时请您帮忙确认一下。非常感谢您的指导与关怀！`;
+    }
+    if (id === "deduction") {
+      return `老板您好，感谢您一直以来的指导与照顾。我在查看${per || "本月"}工资条的扣款明细时，发现扣除金额较以往有所增加。想向您请教一下关于四大保险补缴、住宿或餐费等具体扣款明细。方便时请您帮忙说明一下，谢谢老板！`;
+    }
+    if (id === "paydate") {
+      return `老板您好，非常感谢您的关照。目前已超过合同约定的发薪日，但银行账户尚未查到${per || "本月"}工资到账记录，因此冒昧向您询问一下。请问是否因节假日顺延或转账安排有所变动呢？方便时请您告知一下，谢谢您！`;
+    }
+    return `老板您好，我在核对${per || "本月"}工资时发现合同与实际发放之间存在${diffZh ? `约 ${diffZh}` : "一定"}的差额。方便时麻烦您帮忙确认一下具体明细，非常感谢！`;
+  }
+  if (loc === "en") {
+    if (id === "net") {
+      return `Hello sir, thank you very much for all your hard work and for sending my salary for ${per || "this period"}. While checking my account, I noticed a discrepancy${diffEn} between the net pay stated on my payslip and the actual amount deposited into my bank account, so I am reaching out politely. Could you please check when you have a moment whether there were additional unlisted deductions—such as dormitory, meal expenses, or retroactive insurance adjustments—or perhaps a minor discrepancy during the bank transfer? I apologize for taking up your time during your busy schedule. Thank you sincerely for your continuous support and care!`;
+    }
+    if (id === "base") {
+      return `Hello sir, thank you very much for always supporting and guiding me at work. While reviewing my salary details for ${per || "this period"}, I noticed a difference${diffEn} between the base salary specified in Article 4 of my employment contract and the base salary recorded on my payslip. Could you please check at your convenience whether there was any change to the contractual working hours or the base pay calculation criteria? I apologize for bothering you during your busy schedule, and thank you sincerely!`;
+    }
+    if (id === "deduction") {
+      return `Hello sir, thank you for your support. While reviewing the deductions on my payslip for ${per || "this period"}, I noticed a noticeable increase in deduction items compared to previous months. Could you please explain the specific breakdown regarding insurance adjustments, dormitory, or meal expenses when you have time? Thank you very much!`;
+    }
+    if (id === "paydate") {
+      return `Hello sir, thank you always for taking care of us. I am politely inquiring because my salary deposit has not yet appeared in my bank account past the agreed payday in my contract. Could you please let me know if there was a schedule change due to bank holidays or transfer delays? Thank you!`;
+    }
+    return `Hello sir, thank you for your guidance. While reviewing my pay details for ${per || "this period"}, I noticed a discrepancy${diffEn} between my contract and actual payment. Could you please check this when you have a moment? Thank you sincerely!`;
+  }
+  return "";
+}
+
 /**
  * AI Agent PayCheck 심층 분석 API 라우트
  * - GEMINI_API_KEY 또는 OPENAI_API_KEY 가 설정되어 있으면 실제 LLM API 호출
@@ -77,89 +146,322 @@ export async function POST(req: Request) {
         const beJson = await beRes.json();
         if (beJson.success && beJson.data) {
           const d = beJson.data;
-          const diffWon = finding?.difference
-            ? `${Math.abs(finding.difference).toLocaleString("ko-KR")}원`
-            : "";
+          const formatDiff = (amt?: number, loc?: string) => {
+            if (!amt) return "";
+            const abs = Math.abs(amt);
+            if (loc === "vi") return `${abs.toLocaleString("vi-VN")} won`;
+            if (loc === "en") return `${abs.toLocaleString("en-US")} KRW`;
+            if (loc === "zh") return `${abs.toLocaleString("zh-CN")} 韩元`;
+            return `${abs.toLocaleString("ko-KR")}원`;
+          };
+          const diffWon = formatDiff(finding?.difference, locale);
           const firstCard = d.employerQuestionCards?.[0];
-
-          const defaultReasons = [
-            "임금명세서 미기재 추가 공제 가능성 (기숙사비, 수도광열비, 식대, 4대보험 소급 정산 등 사전 미동의 공제)",
-            "가산수당(연장·야간·휴일근로 1.5배 가산) 또는 주휴수당 산정 누락/오차",
-            "사업장 급여 담당자의 단순 송금 입력 착오 또는 분할 이체",
-          ];
-          const reasonsList = (d.reasons && d.reasons.length > 0) ? d.reasons : defaultReasons;
-
           const isBaseFinding = finding?.id === "base" || (finding?.title && finding.title.includes("기본급"));
-          const fallbackHeadline = isBaseFinding
-            ? (diffWon ? `계약 기본급과 명세서 기본급 간 ${diffWon} 차이 분석` : "계약 기본급과 명세서 기본급 간 차이 분석")
-            : (diffWon ? `실제 입금액과 명세서 간 ${diffWon} 차액 원인 분석` : "실제 입금액과 명세서 간 차액 원인 분석");
 
-          const fallbackSummary = isBaseFinding
-            ? (diffWon
-                ? `체결된 근로계약서 상의 기본급과 이번 달 임금명세서 기본급 사이에 ${diffWon}의 차이가 확인되었습니다. 근로기준법 제17조에 따라 소정근로시간 변경 또는 기본급 산정 기준에 대한 확인이 필요합니다.`
-                : "계약 기본급과 명세서 기본급 사이에 차이가 확인되었습니다.")
-            : (diffWon
-                ? `임금명세서와 실제 통장 입금액 사이에 ${diffWon}의 차액이 확인되었습니다. 근로기준법 제43조(전액 지급의 원칙)에 따라 근로자의 사전 동의 없는 임의 공제는 제한되므로 구체적인 확인이 필요합니다.`
-                : "임금명세서와 실제 통장 입금액 사이에 차액이 확인되었습니다.");
+          // 한글 포함 여부 검사 (사용자가 외국어 설정인데 백엔드가 한국어로 온 경우 대비)
+          const containsKorean = (s?: string) => /[가-힣]/.test(s || "");
+
+          let headline = d.headline;
+          let summary = d.summary;
+          let docGuide = d.documentCheckGuide;
+
+          if (locale === "vi" && (!summary || containsKorean(summary))) {
+            if (isBaseFinding) {
+              headline = `Phát hiện chênh lệch ${diffWon || ""} lương cơ bản ${period || ""}`.trim();
+              summary = `Kết quả phân tích lương tháng ${period || ""} cho thấy lương cơ bản trên phiếu lương có chênh lệch ${diffWon || ""} so với hợp đồng lao động. Theo Điều 43 Luật Tiêu chuẩn Lao động, việc giảm lương cơ bản mà không có sự đồng ý bằng văn bản của người lao động là bị hạn chế.`;
+              docGuide = "Vui lòng đối chiếu mục lương cơ bản trên hợp đồng lao động với phiếu lương để xác nhận lý do phát sinh chênh lệch.";
+            } else {
+              headline = `Phát hiện chênh lệch ${diffWon || ""} tiền vào tài khoản ${period || ""}`.trim();
+              summary = `Khoản tiền nhận vào tài khoản tháng ${period || ""} có chênh lệch thiếu ${diffWon || ""} so với thực nhận trên phiếu lương. Cần kiểm tra xem có khoản khấu trừ bổ sung nào chưa được thông báo hay không.`;
+              docGuide = `Vui lòng đối chiếu mục các khoản khấu trừ trên phiếu lương với sao kê tài khoản ngân hàng để làm rõ khoản chênh lệch ${diffWon || ""}.`;
+            }
+          } else if (locale === "en" && (!summary || containsKorean(summary))) {
+            if (isBaseFinding) {
+              headline = `Base salary difference of ${diffWon || ""} detected for ${period || ""}`.trim();
+              summary = `Analysis for ${period || ""} shows a ${diffWon || ""} difference in base salary between the employment contract and payslip. Under Article 43 of the Labor Standards Act, unauthorized base pay reduction is restricted.`;
+              docGuide = "Please compare the base pay in your employment contract with your payslip to check the reason for the difference.";
+            } else {
+              headline = `Deposit shortage of ${diffWon || ""} detected for ${period || ""}`.trim();
+              summary = `There is a shortage of ${diffWon || ""} between your bank deposit and the net pay on your payslip for ${period || ""}. Please verify any additional deductions.`;
+              docGuide = `Please compare the deduction details on your payslip with your bank transaction record for the ${diffWon || ""} difference.`;
+            }
+          } else if (locale === "zh" && (!summary || containsKorean(summary))) {
+            if (isBaseFinding) {
+              headline = `${period || ""} 基本工资差额 ${diffWon || ""} 核对提醒`.trim();
+              summary = `劳动合同约定的基本工资与本月工资明细存在 ${diffWon || ""} 差额。依据劳动基准法，未获劳动者书面同意不得随意变更基本工资。`;
+              docGuide = "请对照劳动合同中的基本工资条款与工资明细中的基本工资项目，确认是否有变更协议。";
+            } else {
+              headline = `${period || ""} 银行实到账缺少 ${diffWon || ""} 差额提醒`.trim();
+              summary = `本月到账金额与工资条实发金额存在 ${diffWon || ""} 差额。需要核查是否有未注明的额外扣款或计算失误。`;
+              docGuide = `请对照工资明细中的扣款项目与银行对账单，查明 ${diffWon || ""} 差额原因。`;
+            }
+          }
+
+          if (!headline) {
+            headline = isBaseFinding
+              ? (diffWon ? `계약 기본급과 명세서 기본급 간 ${diffWon} 차이 분석` : "계약 기본급과 명세서 기본급 간 차이 분석")
+              : (diffWon ? `실제 입금액과 명세서 간 ${diffWon} 차액 원인 분석` : "실제 입금액과 명세서 간 차액 원인 분석");
+          }
+          if (!summary) {
+            summary = isBaseFinding
+              ? `체결된 근로계약서 상의 기본급과 이번 달 임금명세서 기본급 사이에 ${diffWon || "차액"}의 차이가 확인되었습니다.`
+              : `임금명세서와 실제 통장 입금액 사이에 ${diffWon || "차액"}의 차액이 확인되었습니다.`;
+          }
+          if (!docGuide) {
+            docGuide = isBaseFinding
+              ? "근로계약서 제4조(기본급) 항목과 임금명세서의 기본급 항목을 대조해보세요."
+              : "임금명세서의 공제 내역과 실제 통장 입금 거래내역서를 대조해보세요.";
+          }
+
+          // 원인 목록 다국어 처리
+          let causesList = (d.reasons && d.reasons.length > 0 && !(locale !== "ko" && containsKorean(d.reasons[0])))
+            ? d.reasons.map((r: string) => {
+                const titlePart = r.includes("(") ? r.split("(")[0].trim() : r.split(":")[0].trim();
+                return {
+                  title: titlePart || r,
+                  description: r,
+                  category: (r.includes("공제") || r.toLowerCase().includes("deduction") || r.toLowerCase().includes("khấu trừ"))
+                    ? ("DEDUCTION" as const)
+                    : (r.includes("수당") || r.toLowerCase().includes("allowance") || r.toLowerCase().includes("phụ cấp"))
+                    ? ("ALLOWANCE" as const)
+                    : isBaseFinding ? ("BASE_PAY" as const) : ("NET_PAY" as const),
+                };
+              })
+            : locale === "vi"
+            ? [
+                {
+                  title: "Khả năng có khoản khấu trừ chưa ghi trên phiếu lương",
+                  description: "Tiền ký túc xá, điện nước, ăn uống hoặc đóng bảo hiểm bổ sung có thể đã bị trừ trước khi chuyển.",
+                  category: "DEDUCTION" as const,
+                },
+                {
+                  title: "Bỏ sót tính tiền làm thêm giờ hoặc phụ cấp chuyên cần",
+                  description: "Có thể có sự nhầm lẫn trong việc tính toán số giờ làm việc thực tế.",
+                  category: "ALLOWANCE" as const,
+                },
+                {
+                  title: "Lỗi nhập liệu hoặc chuyển tiền chia nhỏ của kế toán",
+                  description: "Do sơ suất chuyển khoản hoặc chuyển thành nhiều lần.",
+                  category: isBaseFinding ? ("BASE_PAY" as const) : ("NET_PAY" as const),
+                },
+              ]
+            : locale === "en"
+            ? [
+                {
+                  title: "Possible unlisted deductions",
+                  description: "Dormitory, utilities, or meal expenses might have been deducted without prior agreement.",
+                  category: "DEDUCTION" as const,
+                },
+                {
+                  title: "Omission or error in overtime allowance",
+                  description: "Calculations for overtime or holiday work may have been omitted.",
+                  category: "ALLOWANCE" as const,
+                },
+                {
+                  title: "Clerical mistake or split transfer",
+                  description: "Administrative transfer error or split payments by the employer.",
+                  category: isBaseFinding ? ("BASE_PAY" as const) : ("NET_PAY" as const),
+                },
+              ]
+            : [
+                {
+                  title: "임금명세서 미기재 추가 공제 가능성",
+                  description: "기숙사비, 수도광열비, 식대, 4대보험 소급 정산 등 사전 미동의 공제 가능성",
+                  category: "DEDUCTION" as const,
+                },
+                {
+                  title: "가산수당 또는 주휴수당 산정 누락/오차",
+                  description: "연장·야간·휴일근로 수당 계산 시 누락이 발생했을 수 있습니다.",
+                  category: "ALLOWANCE" as const,
+                },
+                {
+                  title: "급여 담당자의 단순 송금 입력 착오 또는 분할 이체",
+                  description: "계좌 이체 시 금액 오입력 또는 2회 분할 송금 여부를 확인해야 합니다.",
+                  category: isBaseFinding ? ("BASE_PAY" as const) : ("NET_PAY" as const),
+                },
+              ];
+
+          // 법적 기준 다국어 처리
+          const legalBasis = locale === "vi"
+            ? {
+                law: "Điều 43 Luật Tiêu chuẩn Lao động (Nguyên tắc trả toàn bộ lương)",
+                description: "Tiền lương phải được trả đầy đủ, trực tiếp bằng tiền tệ cho người lao động vào ngày cố định. Việc tự ý khấu trừ lương khi chưa có sự đồng ý bằng văn bản là bị hạn chế nghiêm ngặt.",
+                protectionNotice: "Bạn có quyền yêu cầu người sử dụng lao động cung cấp bảng kê chi tiết bằng văn bản cho bất kỳ khoản khấu trừ nào.",
+              }
+            : locale === "en"
+            ? {
+                law: "Article 43 of the Labor Standards Act (Principle of Full Payment)",
+                description: "Wages must be paid directly to the employee in full in currency on a fixed date. Deductions without prior written consent are strictly restricted.",
+                protectionNotice: "Workers have the legal right to request written deduction specifications from employers.",
+              }
+            : {
+                law: "근로기준법 제43조 (임금 지급의 원칙) 및 제48조 (임금명세서 교부)",
+                description: "임금은 통화로 직접 근로자에게 그 전액을 정기일에 지급하여야 하며, 사전 서면 동의 없는 공제는 엄격히 제한됩니다.",
+                protectionNotice: "공제 사유가 명세서에 기재되지 않은 차액은 사업주에게 서면 내역 교부를 요청할 권리가 있습니다.",
+              };
+
+          // 필수 증빙 서류 다국어 처리
+          const requiredEvidence = (d.requiredEvidence && d.requiredEvidence.length > 0 && !(locale !== "ko" && containsKorean(d.requiredEvidence[0])))
+            ? d.requiredEvidence
+            : locale === "vi"
+            ? [
+                `Bản sao phiếu lương tháng ${period || ""}`,
+                "Sao kê lịch sử giao dịch nhận lương từ ngân hàng",
+                "Bản sao hợp đồng lao động tiêu chuẩn",
+                "Bảng chấm công hoặc nhật ký làm việc",
+              ]
+            : locale === "en"
+            ? [
+                `Copy of ${period || ""} payslip`,
+                "Bank salary transaction statement",
+                "Standard employment contract copy",
+                "Timecard or work attendance log",
+              ]
+            : [
+                "해당 월 임금명세서 사본 (지급/공제 항목)",
+                "은행 통장 거래내역서",
+                "표준근로계약서 사본",
+                "출퇴근 기록부 또는 근무일지",
+              ];
+
+          // 추천 행동 다국어 처리
+          const nextActions = (d.nextActions && d.nextActions.length > 0 && !(locale !== "ko" && containsKorean(d.nextActions[0])))
+            ? d.nextActions.map((a: string, idx: number) => {
+                const colonIdx = a.indexOf(":");
+                const title = colonIdx !== -1 ? a.slice(0, colonIdx).trim() : `${idx + 1}단계`;
+                const action = colonIdx !== -1 ? a.slice(colonIdx + 1).trim() : a;
+                return {
+                  step: idx + 1,
+                  title,
+                  action,
+                  urgency: idx === 0 ? ("HIGH" as const) : idx === 1 ? ("HIGH" as const) : ("MEDIUM" as const),
+                };
+              })
+            : locale === "vi"
+            ? [
+                {
+                  step: 1,
+                  title: "Bước 1: Chụp màn hình lưu trữ bằng chứng",
+                  action: "Lưu giữ an toàn phiếu lương và sao kê tài khoản ngân hàng để làm bằng chứng.",
+                  urgency: "HIGH" as const,
+                },
+                {
+                  step: 2,
+                  title: "Bước 2: Sử dụng thẻ câu hỏi hỏi người sử dụng lao động",
+                  action: "Sao chép thẻ câu hỏi được AI chuẩn bị sẵn để nhắn tin lịch sự hỏi lý do chênh lệch.",
+                  urgency: "HIGH" as const,
+                },
+                {
+                  step: 3,
+                  title: "Bước 3: Nhận phiếu lương sửa đổi và chuyển khoản bổ sung",
+                  action: "Yêu cầu cấp phiếu lương sửa đổi có ghi rõ lý do khấu trừ nếu có sai sót.",
+                  urgency: "HIGH" as const,
+                },
+                {
+                  step: 4,
+                  title: "Bước 4: Tư vấn cơ quan bảo vệ quyền lợi nếu cần",
+                  action: "Nếu không được giải quyết thỏa đáng, liên hệ Trung tâm Hỗ trợ lao động nước ngoài hoặc Bộ Lao động (1350).",
+                  urgency: "MEDIUM" as const,
+                },
+              ]
+            : locale === "en"
+            ? [
+                {
+                  step: 1,
+                  title: "Step 1: Save evidence",
+                  action: "Keep screenshots of your payslip and bank account statement safely.",
+                  urgency: "HIGH" as const,
+                },
+                {
+                  step: 2,
+                  title: "Step 2: Inquire politely with employer question card",
+                  action: "Copy the provided employer message to ask respectfully about the difference.",
+                  urgency: "HIGH" as const,
+                },
+                {
+                  step: 3,
+                  title: "Step 3: Request adjustment and revised payslip",
+                  action: "Request retroactive payment and a corrected payslip if it was a clerical error.",
+                  urgency: "HIGH" as const,
+                },
+                {
+                  step: 4,
+                  title: "Step 4: Consult Ministry of Employment and Labor (1350)",
+                  action: "Contact counseling centers or call 1350 if unresolved without valid reason.",
+                  urgency: "MEDIUM" as const,
+                },
+              ]
+            : [
+                {
+                  step: 1,
+                  title: "1단계: 팩트 확인 및 증빙 자료 캡처 확보",
+                  action: "임금명세서 사본과 통장 거래내역서를 확보하여 보관하세요.",
+                  urgency: "HIGH" as const,
+                },
+                {
+                  step: 2,
+                  title: "2단계: 사장님 질문 카드로 정중히 서면 문의",
+                  action: "제공된 질문 카드를 복사하여 메신저로 공제 사유를 정중히 확인하세요.",
+                  urgency: "HIGH" as const,
+                },
+                {
+                  step: 3,
+                  title: "3단계: 차액 입금 요청 및 수정 임금명세서 수령",
+                  action: "계산 착오 시 차액 입금과 수정 명세서를 교부받으세요.",
+                  urgency: "HIGH" as const,
+                },
+                {
+                  step: 4,
+                  title: "4단계: 고용노동부(1350) 권리구제 상담",
+                  action: "정당한 이유 없이 미해결 시 고용노동부 또는 외국인노동자지원센터 상담을 받으세요.",
+                  urgency: "MEDIUM" as const,
+                },
+              ];
 
           const report: AiPaycheckReportDto = {
-            headline: d.summary || fallbackHeadline,
-            summary: d.summary || fallbackSummary,
-            causes: reasonsList.map((r: string) => {
-              const titlePart = r.includes("(") ? r.split("(")[0].trim() : r.split(":")[0].trim();
+            headline,
+            summary,
+            documentCheckGuide: docGuide,
+            causes: causesList,
+            legalBasis,
+            requiredEvidence,
+            nextActions,
+            messageForEmployer: (() => {
+              const findingKind = isBaseFinding ? "base" : "net";
+              const rawKorean = firstCard?.koreanScript?.trim();
+              const rawNative = firstCard?.nativeScript?.trim();
+              const fallbackKorean = isBaseFinding
+                ? (diffWon
+                  ? `안녕하세요 사장님, 항상 현장에서 따뜻하게 배려해 주시고 챙겨주셔서 진심으로 감사드립니다. 다름이 아니라 이번 ${period || "이번 달"} 급여 내역을 확인하던 중, 체결한 근로계약서 제4조 상의 기본급과 교부받은 임금명세서 상의 기본급 사이에 약 ${diffWon}의 차액이 확인되어 조심스럽게 연락드렸습니다. 혹시 소정근로시간 계산이나 기본급 산정 기준에 변동 사항이 있었는지, 바쁘시겠지만 편하신 시간에 확인해 주실 수 있으실까요? 늘 감사드리며, 항상 건강 유의하시기 바랍니다!`
+                  : "안녕하세요 사장님, 항상 따뜻하게 챙겨주셔서 감사드립니다. 다름이 아니라 체결한 근로계약서 상의 기본급과 이번 달 임금명세서의 기본급에 차이가 확인되어 연락드렸습니다. 혹시 기본급 산정 기준에 변동이 있었는지 시간 되실 때 확인 부탁드립니다. 늘 배려해 주셔서 감사합니다!")
+                : (diffWon
+                  ? `안녕하세요 사장님, 이번 달에도 노고 많으셨고 급여 챙겨주셔서 진심으로 감사드립니다. 다름이 아니라 급여 내역을 확인하던 중, 교부받은 임금명세서 상의 실지급액과 실제 제 통장에 입금된 금액 사이에 약 ${diffWon}의 차액이 확인되어 조심스럽게 문의드립니다. 혹시 기숙사비나 식대 등 명세서에 기재되지 않은 추가 공제 항목이 있었는지, 아니면 계좌 송금 과정에서 착오가 있었는지 시간 되실 때 확인해 주시면 감사하겠습니다. 바쁘신 업무 중에 번거롭게 해드려 죄송합니다. 늘 배려해 주셔서 감사합니다!`
+                  : "안녕하세요 사장님, 이번 달 급여 입금해 주셔서 진심으로 감사드립니다. 확인 결과 교부받은 임금명세서의 실지급액과 실제 통장 입금액 사이에 차이가 확인되어 연락드렸습니다. 혹시 추가로 공제된 항목이나 확인이 필요한 부분이 있는지 시간 되실 때 알려주시면 감사하겠습니다. 늘 감사드립니다!");
+
+              const shouldReplaceKorean = isInsufficientEmployerMessage(rawKorean);
+              const finalKorean = shouldReplaceKorean ? fallbackKorean : rawKorean!;
+
+              let translated = "";
+              if (locale !== "ko") {
+                if (
+                  !rawNative ||
+                  containsKorean(rawNative) ||
+                  rawNative === rawKorean ||
+                  isInsufficientEmployerMessage(rawNative) ||
+                  shouldReplaceKorean
+                ) {
+                  translated = getEmployerMessageTranslation(findingKind, diffWon, period, locale);
+                } else {
+                  translated = rawNative;
+                }
+              }
+
               return {
-                title: titlePart || r,
-                description: r,
-                category: r.includes("공제") ? "DEDUCTION" : r.includes("수당") ? "ALLOWANCE" : "NET_PAY",
+                korean: finalKorean,
+                translated,
+                language: locale,
               };
-            }),
-            legalBasis: {
-              law: "근로기준법 제43조 (임금 지급의 원칙) 및 제48조 (임금명세서 교부)",
-              description: "임금은 통화로 직접 근로자에게 그 전액을 정기일에 지급하여야 하며, 사전 서면 동의 없는 공제는 엄격히 제한됩니다.",
-              protectionNotice: "공제 사유가 명세서에 기재되지 않은 차액은 사업주에게 서면 내역 교부를 요청할 권리가 있습니다.",
-            },
-            requiredEvidence: (d.requiredEvidence && d.requiredEvidence.length > 0)
-              ? d.requiredEvidence
-              : ["해당 월 임금명세서 사본 (지급/공제 항목)", "은행 통장 거래내역서", "표준근로계약서 사본", "출퇴근 기록부 또는 근무일지"],
-            nextActions: (d.nextActions && d.nextActions.length > 0)
-              ? d.nextActions.map((a: string, idx: number) => {
-                  const colonIdx = a.indexOf(":");
-                  const title = colonIdx !== -1 ? a.slice(0, colonIdx).trim() : `${idx + 1}단계`;
-                  const action = colonIdx !== -1 ? a.slice(colonIdx + 1).trim() : a;
-                  return {
-                    step: idx + 1,
-                    title,
-                    action,
-                    urgency: idx === 0 ? "HIGH" : idx === 1 ? "HIGH" : idx === 2 ? "MEDIUM" : "LOW",
-                  };
-                })
-              : [
-                  {
-                    step: 1,
-                    title: "1단계: 증빙 확보",
-                    action: "해당 월 임금명세서 사본과 은행 통장 거래내역서를 확보합니다.",
-                    urgency: "HIGH",
-                  },
-                  {
-                    step: 2,
-                    title: "2단계: 사업주 정중 문의",
-                    action: "사장님 질문 카드를 활용하여 공제 사유를 정중히 문의합니다.",
-                    urgency: "HIGH",
-                  },
-                ],
-            messageForEmployer: {
-              korean:
-                firstCard?.koreanScript ||
-                (diffWon
-                  ? `안녕하세요 사장님, 이번 달 급여 중 임금명세서 실지급액과 통장 입금액 사이에 ${diffWon}의 차이가 확인되어 연락드렸습니다. 혹시 추가로 공제된 항목이나 확인이 필요한 부분이 있는지 알려주시면 감사하겠습니다.`
-                  : "안녕하세요 사장님, 이번 달 급여 중 임금명세서 실지급액과 통장 입금액 사이에 차이가 확인되어 연락드렸습니다. 혹시 추가로 공제된 항목이나 확인이 필요한 부분이 있는지 알려주시면 감사하겠습니다."),
-              translated:
-                firstCard?.nativeScript ||
-                (diffWon
-                  ? `Xin chào giám đốc, lương có chênh lệch ${diffWon} giữa phiếu lương và tiền vào tài khoản, nhờ giám đốc kiểm tra giúp tôi.`
-                  : "Xin chào giám đốc, lương có sự chênh lệch giữa phiếu lương và tiền vào tài khoản, nhờ giám đốc kiểm tra giúp tôi."),
-              language: locale,
-            },
+            })(),
           };
 
           return NextResponse.json({ ok: true, isMock: false, data: report });
@@ -168,6 +470,9 @@ export async function POST(req: Request) {
     } catch (err) {
       console.warn("Backend explain API call bypassed to direct generator:", err);
     }
+
+    const diffAmount = finding?.difference ? Math.abs(finding.difference) : 0;
+    const diffWon = diffAmount > 0 ? `${diffAmount.toLocaleString("ko-KR")}원` : "";
 
     const apiKey = process.env.GEMINI_API_KEY || process.env.NEXT_PUBLIC_GEMINI_API_KEY || process.env.OPENAI_API_KEY;
 
@@ -196,7 +501,15 @@ export async function POST(req: Request) {
 1. [언어 규칙]: "messageForEmployer.korean" 필드는 반드시 한국 사업주가 읽을 정중하고 격식 있는 '한국어'로 작성하고, 그 외 모든 필드("headline", "summary", "causes", "legalBasis", "requiredEvidence", "nextActions", "messageForEmployer.translated")는 반드시 사용자의 선택 언어인 "${targetLang}"로 작성하십시오.
 2. [전문성 및 객관성]: 단정적인 법률 위반/체불 선언은 지양하고, "임금 지급의 원칙(근로기준법 제43조)", "임금명세서 필수 기재 의무(근로기준법 제48조)", "소정근로시간 및 수당 산정 기준"에 기반하여 사실 관계와 추정 원인을 구체적으로 설명하십시오.
 3. [단계별 실행 방안]: 외국인 근로자가 실제로 취해야 할 조치를 1) 증빙 확보, 2) 사업주 정중 문의, 3) 수정 명세서 수령, 4) 필요시 고용노동부 상담(1350) 등 3~4단계로 구체화하십시오.
-4. [사업주 질문 카드]: 계약 기본급, 명세서 실지급액, 통장 실입금액, 차액을 명확한 수치로 언급하며 공제 사유나 계산 착오 여부를 정중하게 묻는 비즈니스 서면 톤앤매너를 유지하십시오.
+4. [사업주 질문 카드 (messageForEmployer) - 절대적 필수 지침]:
+   - 절대 '급여 차이에 대한 문의', '확인 요청' 같은 단순 제목이나 1줄 단문을 작성하지 마십시오.
+   - 외국인 근로자가 한국인 사업주/대표님께 문자나 카카오톡으로 복사하여 정중하게 전달할 수 있는, 격식 있는 3~4문장의 장문 완성형 존댓말 메시지를 작성하십시오.
+   - [필수 4단계 구성]:
+     ① 첫인사 및 평소 배려와 가르침에 대한 진심 어린 감사 인사
+     ② 구체적인 근거 대조 제시: 체결한 근로계약서 제4조 상의 기본급, 교부받은 임금명세서 상의 실지급액/기본급, 통장 실제 입금액, 그리고 발생한 차액의 구체적 액수를 명확히 대조하여 조심스럽게 언급
+     ③ 혹시 기숙사비, 식대, 4대보험 소급 정산 등 명세서 외 추가 공제 항목이 있었는지 또는 산정 기준에 변동이 있었는지 조심스럽게 확인 부탁드리는 질문
+     ④ 바쁘신 중에 번거롭게 해드려 죄송하다는 양해와 편하신 시간에 확인 부탁드린다는 공손한 맺음말
+   - "messageForEmployer.translated" 역시 위 한국어 장문 전체를 사용자의 선택 언어("${targetLang}")로 정중하고 완전한 비즈니스 서신 톤으로 번역하십시오.
 5. 반드시 아래의 JSON 포맷으로만 응답하십시오.
 
 응답 JSON 스키마:
@@ -225,8 +538,8 @@ export async function POST(req: Request) {
     }
   ],
   "messageForEmployer": {
-    "korean": "정중하고 격식 있는 한국어 사업주 문의 문장 (한국어)",
-    "translated": "사용자 언어로 번역된 문의 문장 (${targetLang})",
+    "korean": "정중하고 격식 있는 한국어 사업주 문의 장문 완성형 문장 (한국어 존댓말, 3~4문장)",
+    "translated": "사용자 언어로 완벽히 번역된 정중한 비즈니스 장문 (${targetLang})",
     "language": "${locale}"
   }
 }
@@ -248,6 +561,26 @@ export async function POST(req: Request) {
             const text = geminiJson.candidates?.[0]?.content?.parts?.[0]?.text;
             if (text) {
               const parsed = JSON.parse(text) as AiPaycheckReportDto;
+              const isBase = finding?.id === "base" || (finding?.title && finding.title.includes("기본급"));
+              const diffWonStr = diffWon || "";
+
+              if (isInsufficientEmployerMessage(parsed.messageForEmployer?.korean)) {
+                parsed.messageForEmployer = {
+                  korean: isBase
+                    ? `안녕하세요 사장님, 항상 현장에서 따뜻하게 배려해 주시고 챙겨주셔서 진심으로 감사드립니다. 다름이 아니라 이번 ${period || "이번 달"} 급여 내역을 확인하던 중, 체결한 근로계약서 제4조 상의 기본급과 교부받은 임금명세서 상의 기본급 사이에 약 ${diffWonStr || "차액"}의 차이가 확인되어 조심스럽게 연락드렸습니다. 혹시 소정근로시간 계산이나 기본급 산정 기준에 변동 사항이 있었는지, 바쁘시겠지만 편하신 시간에 확인해 주실 수 있으실까요? 늘 감사드리며, 항상 건강 유의하시기 바랍니다!`
+                    : `안녕하세요 사장님, 이번 달에도 노고 많으셨고 급여 챙겨주셔서 진심으로 감사드립니다. 다름이 아니라 급여 내역을 확인하던 중, 교부받은 임금명세서 상의 실지급액과 실제 제 통장에 입금된 금액 사이에 약 ${diffWonStr || "차액"}의 차이가 확인되어 조심스럽게 문의드립니다. 혹시 기숙사비나 식대 등 명세서에 기재되지 않은 추가 공제 항목이 있었는지, 아니면 계좌 송금 과정에서 착오가 있었는지 시간 되실 때 확인해 주시면 감사하겠습니다. 바쁘신 업무 중에 번거롭게 해드려 죄송합니다. 늘 배려해 주셔서 감사합니다!`,
+                  translated: getEmployerMessageTranslation(isBase ? "base" : "net", diffWonStr, period, locale),
+                  language: locale,
+                };
+              } else if (locale !== "ko" && isInsufficientEmployerMessage(parsed.messageForEmployer?.translated)) {
+                parsed.messageForEmployer.translated = getEmployerMessageTranslation(
+                  isBase ? "base" : "net",
+                  diffWonStr,
+                  period,
+                  locale
+                );
+              }
+
               return NextResponse.json({ ok: true, isMock: false, data: parsed });
             }
           }
@@ -258,46 +591,9 @@ export async function POST(req: Request) {
     }
 
     // 2. Fallback: PRD 및 법령 기준 정교한 고도화 AI 분석 엔진
-    const diffAmount = finding?.difference ? Math.abs(finding.difference) : 0;
-    const diffWon = diffAmount > 0 ? `${diffAmount.toLocaleString("ko-KR")}원` : "";
     const findingId = finding?.id || "net";
 
     let report: AiPaycheckReportDto;
-
-    function getEmployerMessageTranslation(id: string, diffStr: string, per: string, loc: string): string {
-      const diffVi = diffStr ? ` khoảng ${diffStr}` : "";
-      const diffZh = diffStr ? `约 ${diffStr}` : "";
-      const diffEn = diffStr ? ` of about ${diffStr}` : "";
-
-      if (loc === "vi") {
-        if (id === "net") {
-          return `Xin chào anh/chị, cảm ơn anh/chị đã chuyển lương ${per || "tháng này"}. Tôi thấy có sự chênh lệch${diffVi} giữa số tiền thực lĩnh trên phiếu lương và số tiền thực tế nhận vào tài khoản. Nhờ anh/chị kiểm tra giúp tôi xem có khoản khấu trừ nào bổ sung không ạ. Tôi xin cảm ơn!`;
-        }
-        if (id === "base") {
-          return `Xin chào anh/chị. Có sự chênh lệch${diffVi} giữa mức lương cơ bản trong hợp đồng và phiếu lương tháng này. Nhờ anh/chị giải thích giúp tôi cách tính này được không ạ?`;
-        }
-        return `Xin chào anh/chị. Tôi muốn hỏi về chi tiết lương tháng này. Khi nào thuận tiện nhờ anh/chị kiểm tra giúp tôi. Tôi xin cảm ơn.`;
-      }
-      if (loc === "zh") {
-        if (id === "net") {
-          return `老板您好，感谢您发放${per || "本月"}工资。经核对发现，工资明细中的实发金额与银行实际到账金额相差 ${diffZh}。想请您帮忙确认是否有其他扣除项目，非常感谢！`;
-        }
-        if (id === "base") {
-          return `老板您好，合同中的基本工资与本月工资明细的基本工资相差 ${diffZh}。想向您请教一下具体的计算标准，谢谢！`;
-        }
-        return `老板您好，我想确认一下本月工资的具体明细，方便时请您帮忙看一下，谢谢！`;
-      }
-      if (loc === "en") {
-        if (id === "net") {
-          return `Hello, thank you for sending this month's salary (${per || "this period"}). I noticed a difference${diffEn} between the payslip net amount and the actual bank transfer. Could you please let me know if there was any additional deduction? Thank you!`;
-        }
-        if (id === "base") {
-          return `Hello. There is a difference${diffEn} between the base salary in my contract and this month's payslip. Could you please explain how this was calculated?`;
-        }
-        return `Hello. I would like to check about my paycheck details for this month. Please let me know when you have time. Thank you.`;
-      }
-      return "";
-    }
 
     if (locale === "vi") {
       if (findingId === "net") {
@@ -773,7 +1069,7 @@ export async function POST(req: Request) {
             },
           ],
           messageForEmployer: {
-            korean: `안녕하세요 사장님. 근로계약서의 기본급과 이번 달 임금명세서의 기본급에 ${diffWon} 차이가 확인되어 문의드립니다. 어떤 기준으로 산정된 것인지 확인 부탁드립니다.`,
+            korean: `안녕하세요 사장님, 항상 현장에서 따뜻하게 배려해 주시고 챙겨주셔서 진심으로 감사드립니다. 다름이 아니라 이번 ${period || "이번 달"} 급여 내역을 확인하던 중, 체결한 근로계약서 제4조 상의 기본급과 교부받은 임금명세서 상의 기본급 사이에 약 ${diffWon}의 차액이 확인되어 조심스럽게 연락드렸습니다. 혹시 소정근로시간 계산이나 기본급 산정 기준에 변동 사항이 있었는지, 바쁘시겠지만 편하신 시간에 확인해 주실 수 있으실까요? 늘 감사드리며, 항상 건강 유의하시기 바랍니다!`,
             translated: getEmployerMessageTranslation("base", diffWon, period, locale),
             language: locale,
           },
@@ -804,7 +1100,7 @@ export async function POST(req: Request) {
             },
           ],
           messageForEmployer: {
-            korean: `안녕하세요 사장님. 이번 달 급여 중 ${finding?.title || "급여 내역"}에 대해 확인하고자 연락드렸습니다. 시간 되실 때 확인 부탁드립니다.`,
+            korean: `안녕하세요 사장님, 항상 챙겨주셔서 감사드립니다. 다름이 아니라 이번 ${period || "이번 달"} 급여 중 ${finding?.title || "급여 내역"}과 관련하여 확인이 필요한 부분이 있어 조심스럽게 연락드렸습니다. 바쁘시겠지만 시간 되실 때 내역을 확인해 주시면 감사하겠습니다. 늘 감사드립니다!`,
             translated: getEmployerMessageTranslation("unknown", diffWon, period, locale),
             language: locale,
           },

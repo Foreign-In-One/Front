@@ -111,14 +111,58 @@ export function AnalysisReport({
       ? "WARNING"
       : "DANGER";
 
+  // 다국어 환경에서 finding의 title 및 fact를 현재 locale에 맞게 로컬라이징
+  const localizedFinding = (() => {
+    if (locale === "ko") {
+      return { title: finding.title, fact: finding.fact || finding.title };
+    }
+
+    const fid = finding.id;
+    const titleKey = `rule.finding.${fid}.title`;
+    const translatedTitle = t(titleKey);
+
+    let translatedFact = finding.fact || finding.title;
+    if (fid === "base") {
+      translatedFact = t("rule.finding.base.fact", {
+        contract: finding.left?.amount ? `${finding.left.amount.toLocaleString("ko-KR")}원` : "",
+        statement: finding.right?.amount ? `${finding.right.amount.toLocaleString("ko-KR")}원` : "",
+        diff: finding.difference ? `${Math.abs(finding.difference).toLocaleString("ko-KR")}원` : "",
+      });
+    } else if (fid === "net") {
+      translatedFact = t("rule.finding.net.fact", {
+        statement: finding.left?.amount ? `${finding.left.amount.toLocaleString("ko-KR")}원` : "",
+        deposit: finding.right?.amount ? `${finding.right.amount.toLocaleString("ko-KR")}원` : "",
+        diff: finding.difference ? `${Math.abs(finding.difference).toLocaleString("ko-KR")}원` : "",
+      });
+    } else if (fid === "contract-deposit") {
+      translatedFact = t("rule.finding.contractDeposit.fact", {
+        contract: finding.left?.amount ? `${finding.left.amount.toLocaleString("ko-KR")}원` : "",
+        deposit: finding.right?.amount ? `${finding.right.amount.toLocaleString("ko-KR")}원` : "",
+        diff: finding.difference ? `${Math.abs(finding.difference).toLocaleString("ko-KR")}원` : "",
+      });
+    } else if (fid === "deduction") {
+      translatedFact = t("rule.finding.deduction.fact", {
+        amount: finding.left?.amount ? `${finding.left.amount.toLocaleString("ko-KR")}원` : "",
+        percent: 25,
+      });
+    } else if (translatedTitle && translatedTitle !== titleKey) {
+      translatedFact = translatedTitle;
+    }
+
+    return {
+      title: translatedTitle && translatedTitle !== titleKey ? translatedTitle : finding.title,
+      fact: translatedFact || finding.fact || finding.title,
+    };
+  })();
+
   return (
     <div className="space-y-5 pc-rise">
       {/* 1. 기본 레벨 요약 카드 */}
       <LevelCard
         level={level}
         badge={statusLabel(finding.status)}
-        title={finding.title}
-        description={finding.fact || finding.title}
+        title={localizedFinding.title}
+        description={localizedFinding.fact}
       />
 
       {/* 2. 정상 일치 (MATCH) 상태일 때의 신뢰 브리핑 */}
@@ -188,7 +232,7 @@ export function AnalysisReport({
                 <div className="rounded-2xl bg-amber-500/10 border border-amber-500/25 p-4 space-y-1.5">
                   <div className="flex items-center gap-2 text-xs font-extrabold text-amber-800 dark:text-amber-400">
                     <FileText className="size-4 shrink-0 text-amber-600 dark:text-amber-400" />
-                    <span>추천 서류 대조 가이드 (확인해볼 문서)</span>
+                    <span>{t("pay.report.docCheckGuideTitle")}</span>
                   </div>
                   <p className="text-xs leading-relaxed font-medium text-foreground pl-6">
                     {aiReport.documentCheckGuide}
@@ -212,7 +256,15 @@ export function AnalysisReport({
                         <div className="flex items-center justify-between">
                           <span className="text-xs font-bold text-foreground">{cause.title}</span>
                           <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-muted text-muted-foreground">
-                            {cause.category}
+                            {cause.category === "BASE_PAY"
+                              ? t("pay.field.basePay")
+                              : cause.category === "DEDUCTION"
+                              ? t("pay.field.deductions")
+                              : cause.category === "NET_PAY"
+                              ? t("pay.field.netPay")
+                              : cause.category === "ALLOWANCE"
+                              ? t("pay.field.allowances")
+                              : cause.category}
                           </span>
                         </div>
                         <p className="text-[11px] leading-relaxed text-muted-foreground">
@@ -297,66 +349,120 @@ export function AnalysisReport({
               )}
 
               {/* 다국어 사업주 질문 카드 */}
-              {aiReport.messageForEmployer && (
-                <div className="rounded-3xl bg-gradient-to-br from-primary/10 via-info/10 to-accent/20 border border-primary/20 p-5 shadow-xs space-y-3">
-                  <div className="flex items-center justify-between flex-wrap gap-2">
-                    <div className="flex items-center gap-2 text-xs font-extrabold text-primary">
-                      <MessageSquareQuote className="size-4" />
-                      <span>{t("pay.report.employerCardTitle")}</span>
-                    </div>
-                    <div className="flex items-center gap-1.5">
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        className="rounded-2xl bg-card text-xs font-bold text-primary hover:bg-accent hover:text-accent-foreground border border-border/60 shadow-xs h-8 px-3"
-                        onClick={() => {
-                          void navigator.clipboard.writeText(aiReport.messageForEmployer.korean);
-                          toast.success(t("pay.report.copySuccess"));
-                        }}
-                      >
-                        <Copy className="mr-1.5 size-3.5" />
-                        {t("pay.report.copyKorean")}
-                      </Button>
-                      {locale !== "ko" && aiReport.messageForEmployer.translated && (
+              {aiReport.messageForEmployer && (() => {
+                const rawTranslated = aiReport.messageForEmployer.translated?.trim() || "";
+                const rawKorean = aiReport.messageForEmployer.korean?.trim() || "";
+                const isKoreanText = (s?: string) => /[가-힣]/.test(s || "");
+                const diffAmt = finding?.difference ? Math.abs(finding.difference) : 0;
+                const diffStr = diffAmt > 0
+                  ? (locale === "en" ? `${diffAmt.toLocaleString("en-US")} KRW`
+                    : locale === "vi" ? `${diffAmt.toLocaleString("vi-VN")} won`
+                    : locale === "zh" ? `${diffAmt.toLocaleString("zh-CN")} 韩元`
+                    : `${diffAmt.toLocaleString("ko-KR")}원`)
+                  : "";
+                const isBase = finding?.id === "base" || (finding?.title && finding.title.includes("기본급"));
+
+                const isKoreanInsufficient =
+                  !rawKorean ||
+                  rawKorean.length < 35 ||
+                  rawKorean === "급여 차이에 대한 문의" ||
+                  rawKorean === "급여 차액에 대한 문의" ||
+                  rawKorean === "급여 차액 확인 요청" ||
+                  (rawKorean.startsWith("급여 차이") && rawKorean.length < 30);
+
+                const safeKorean = isKoreanInsufficient
+                  ? (isBase
+                    ? `안녕하세요 사장님, 항상 현장에서 따뜻하게 배려해 주시고 챙겨주셔서 진심으로 감사드립니다. 다름이 아니라 이번 ${period || "이번 달"} 급여 내역을 확인하던 중, 체결한 근로계약서 제4조 상의 기본급과 교부받은 임금명세서 상의 기본급 사이에 약 ${diffStr || "차액"}의 차이가 확인되어 조심스럽게 연락드렸습니다. 혹시 소정근로시간 계산이나 기본급 산정 기준에 변동 사항이 있었는지, 바쁘시겠지만 편하신 시간에 확인해 주실 수 있으실까요? 늘 감사드리며, 항상 건강 유의하시기 바랍니다!`
+                    : `안녕하세요 사장님, 이번 달에도 노고 많으셨고 급여 챙겨주셔서 진심으로 감사드립니다. 다름이 아니라 급여 내역을 확인하던 중, 교부받은 임금명세서 상의 실지급액과 실제 제 통장에 입금된 금액 사이에 약 ${diffStr || "차액"}의 차이가 확인되어 조심스럽게 문의드립니다. 혹시 기숙사비나 식대 등 명세서에 기재되지 않은 추가 공제 항목이 있었는지, 아니면 계좌 송금 과정에서 착오가 있었는지 시간 되실 때 확인해 주시면 감사하겠습니다. 바쁘신 업무 중에 번거롭게 해드려 죄송합니다. 늘 배려해 주셔서 감사합니다!`)
+                  : rawKorean;
+
+                let safeTranslated = rawTranslated;
+                if (
+                  locale !== "ko" &&
+                  (!rawTranslated ||
+                    isKoreanText(rawTranslated) ||
+                    rawTranslated === rawKorean ||
+                    rawTranslated.length < 35 ||
+                    rawTranslated === "급여 차액에 대한 문의" ||
+                    rawTranslated === "I would like to inquire about the discrepancy in my salary." ||
+                    isKoreanInsufficient)
+                ) {
+                  if (locale === "en") {
+                    safeTranslated = isBase
+                      ? `Hello sir, thank you very much for always supporting and guiding me at work. While reviewing my salary details for ${period || "this period"}, I noticed a difference${diffStr ? ` of ${diffStr}` : ""} between the base salary specified in Article 4 of my employment contract and the base salary recorded on my payslip. Could you please check at your convenience whether there was any change to the contractual working hours or the base pay calculation criteria? I apologize for bothering you during your busy schedule, and thank you sincerely!`
+                      : `Hello sir, thank you very much for all your hard work and for sending my salary for ${period || "this period"}. While checking my account, I noticed a discrepancy${diffStr ? ` of ${diffStr}` : ""} between the net pay stated on my payslip and the actual amount deposited into my bank account, so I am reaching out politely. Could you please check when you have a moment whether there were additional unlisted deductions—such as dormitory, meal expenses, or retroactive insurance adjustments—or perhaps a minor discrepancy during the bank transfer? I apologize for taking up your time during your busy schedule. Thank you sincerely for your continuous support and care!`;
+                  } else if (locale === "vi") {
+                    safeTranslated = isBase
+                      ? `Xin chào giám đốc, em xin chân thành cảm ơn giám đốc đã luôn quan tâm và giúp đỡ em trong công việc. Khi đối chiếu chi tiết lương tháng ${period || "này"}, em nhận thấy có khoản chênh lệch${diffStr ? ` khoảng ${diffStr}` : ""} giữa mức lương cơ bản ghi trong Điều 4 của Hợp đồng lao động và mức lương cơ bản trên phiếu lương. Không biết có sự thay đổi nào về cách tính giờ làm việc quy định hay tiêu chuẩn lương cơ bản không ạ? Khi nào thuận tiện, nhờ giám đốc kiểm tra lại giúp em với ạ. Em xin cảm ơn rất nhiều!`
+                      : `Xin chào giám đốc, em xin chân thành cảm ơn giám đốc đã vất vả và chuyển lương tháng ${period || "này"} cho em. Khi kiểm tra tài khoản, em thấy số tiền thực lĩnh ghi trên phiếu lương và số tiền thực tế nhận vào tài khoản ngân hàng có khoản chênh lệch${diffStr ? ` khoảng ${diffStr}` : ""}. Không biết công ty có khấu trừ thêm khoản nào ngoài phiếu lương như tiền ký túc xá, tiền ăn, bảo hiểm truy thu hay có nhầm lẫn trong quá trình chuyển khoản không ạ? Khi nào thuận tiện, nhờ giám đốc xem lại giúp em với ạ. Em xin lỗi vì đã làm phiền giám đốc trong lúc bận rộn. Em cảm ơn giám đốc rất nhiều!`;
+                  } else if (locale === "zh") {
+                    safeTranslated = isBase
+                      ? `老板您好，非常感谢您在工作中一直以来对我的关照与支持。我在核对${period || "本月"}的工资明细时发现，劳动合同第四条约定的基本工资与本月收到的工资条上的基本工资之间存在${diffStr ? `约 ${diffStr}` : "一定"}的差额，因此想向您礼貌地请教一下。想请问是否因法定工作时间核算或基本工资计算标准有所调整呢？百忙之中打扰您十分抱歉，方便时请您帮忙确认一下。非常感谢您的指导与关怀！`
+                      : `老板您好，辛苦您了，非常感谢您按时发放${period || "本月"}的工资。我在核对实到账目时注意到，工资条上载明的实发金额与我的银行账户实际到账金额之间存在${diffStr ? `约 ${diffStr}` : "一定"}的差额，因此想向您礼貌地咨询一下。想请问是否有未在明细中列出的扣款项目（如宿舍费、餐费、四大保险补扣等），或者是转账过程中出现了小差错？百忙之中给您添麻烦了，方便时请您帮忙查验一下。非常感谢老板一直以来的关照！`;
+                  }
+                }
+
+                return (
+                  <div className="rounded-3xl bg-gradient-to-br from-primary/10 via-info/10 to-accent/20 border border-primary/20 p-5 shadow-xs space-y-3">
+                    <div className="flex items-center justify-between flex-wrap gap-2">
+                      <div className="flex items-center gap-2 text-xs font-extrabold text-primary">
+                        <MessageSquareQuote className="size-4" />
+                        <span>{t("pay.report.employerCardTitle")}</span>
+                      </div>
+                      <div className="flex items-center gap-1.5">
                         <Button
                           size="sm"
                           variant="ghost"
-                          className="rounded-2xl bg-card text-xs font-bold text-muted-foreground hover:text-foreground hover:bg-accent border border-border/60 shadow-xs h-8 px-3"
+                          className="rounded-2xl bg-card text-xs font-bold text-primary hover:bg-accent hover:text-accent-foreground border border-border/60 shadow-xs h-8 px-3"
                           onClick={() => {
-                            void navigator.clipboard.writeText(aiReport.messageForEmployer.translated);
-                            toast.success(t("pay.report.copyTranslatedSuccess"));
+                            void navigator.clipboard.writeText(safeKorean);
+                            toast.success(t("pay.report.copySuccess"));
                           }}
                         >
                           <Copy className="mr-1.5 size-3.5" />
-                          {t("pay.report.copyTranslated")}
+                          {t("pay.report.copyKorean")}
                         </Button>
+                        {locale !== "ko" && safeTranslated && (
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="rounded-2xl bg-card text-xs font-bold text-muted-foreground hover:text-foreground hover:bg-accent border border-border/60 shadow-xs h-8 px-3"
+                            onClick={() => {
+                              void navigator.clipboard.writeText(safeTranslated);
+                              toast.success(t("pay.report.copyTranslatedSuccess"));
+                            }}
+                          >
+                            <Copy className="mr-1.5 size-3.5" />
+                            {t("pay.report.copyTranslated")}
+                          </Button>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="rounded-2xl bg-card p-4 border border-border/50 space-y-2.5">
+                      <div>
+                        <span className="text-[10px] font-black text-primary uppercase tracking-wider block mb-1">
+                          {t("pay.report.employerKoreanLabel")}
+                        </span>
+                        <p className="text-xs leading-relaxed font-bold text-foreground bg-muted/40 rounded-xl p-2.5 whitespace-pre-line">
+                          "{safeKorean}"
+                        </p>
+                      </div>
+
+                      {locale !== "ko" && safeTranslated && (
+                        <div className="border-t border-border/40 pt-2.5">
+                          <span className="text-[10px] font-black text-muted-foreground uppercase tracking-wider block mb-1">
+                            {t("pay.report.employerTranslatedLabel")}
+                          </span>
+                          <p className="text-xs leading-relaxed font-medium text-foreground bg-muted/40 rounded-xl p-2.5 whitespace-pre-line">
+                            "{safeTranslated}"
+                          </p>
+                        </div>
                       )}
                     </div>
                   </div>
-
-                  <div className="rounded-2xl bg-card p-4 border border-border/50 space-y-2.5">
-                    <div>
-                      <span className="text-[10px] font-black text-primary uppercase tracking-wider block mb-1">
-                        🇰🇷 한국어 (사업주 전달용)
-                      </span>
-                      <p className="text-xs leading-relaxed font-bold text-foreground bg-muted/40 rounded-xl p-2.5">
-                        "{aiReport.messageForEmployer.korean}"
-                      </p>
-                    </div>
-
-                    {locale !== "ko" && aiReport.messageForEmployer.translated && (
-                      <div className="border-t border-border/40 pt-2.5">
-                        <span className="text-[10px] font-black text-muted-foreground uppercase tracking-wider block mb-1">
-                          🌐 모국어 번역 (내용 확인용)
-                        </span>
-                        <p className="text-xs leading-relaxed font-medium text-foreground bg-muted/40 rounded-xl p-2.5">
-                          "{aiReport.messageForEmployer.translated}"
-                        </p>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              )}
+                );
+              })()}
             </div>
           )}
         </div>

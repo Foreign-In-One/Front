@@ -76,6 +76,180 @@ const WEEKDAYS_MAP: Record<UiLocale, string[]> = {
   zh: ["日", "一", "二", "三", "四", "五", "六"],
 };
 
+function formatPeriodStr(raw: string, locale: UiLocale): string {
+  const mMatch = raw.match(/(?:(\d{4})[-년.\s]*)?(\d{1,2})월?/);
+  if (!mMatch) return raw;
+  const year = mMatch[1];
+  const month = Number(mMatch[2]);
+
+  const monthNamesEn = [
+    "January", "February", "March", "April", "May", "June",
+    "July", "August", "September", "October", "November", "December"
+  ];
+  const monthNameEn = monthNamesEn[month - 1] || `${month}`;
+
+  if (locale === "en") {
+    return year ? `${monthNameEn} ${year}` : monthNameEn;
+  }
+  if (locale === "vi") {
+    return year ? `Tháng ${month} năm ${year}` : `Tháng ${month}`;
+  }
+  if (locale === "zh") {
+    return year ? `${year}年${month}月` : `${month}月`;
+  }
+  return raw;
+}
+
+function formatAmountInText(amtText: string, locale: UiLocale): string {
+  if (!amtText) return "";
+  const clean = amtText.replace(/원$/, "").trim();
+  if (locale === "en") return `${clean} KRW`;
+  if (locale === "vi") return `${clean} won`;
+  if (locale === "zh") return `${clean} 韩元`;
+  return `${clean}원`;
+}
+
+function localizeEventTitle(title: string, locale: UiLocale): string {
+  if (!title || locale === "ko") return title;
+
+  // 1. "8월 급여 점검 완료 (2,300,000원)" or "2026-08 급여 점검 완료"
+  const checkMatch = title.match(/^(\d{4}[-년.\s]*\d{1,2}월?|\d{1,2}월)\s*급여\s*점검\s*완료(?:\s*\((.*?)\))?$/);
+  if (checkMatch) {
+    const periodStr = formatPeriodStr(checkMatch[1], locale);
+    const amount = checkMatch[2] ? ` (${formatAmountInText(checkMatch[2], locale)})` : "";
+    if (locale === "en") return `${periodStr} Salary Check Completed${amount}`;
+    if (locale === "vi") return `Hoàn tất kiểm tra lương ${periodStr}${amount}`;
+    if (locale === "zh") return `${periodStr} 工资核对完成${amount}`;
+  }
+
+  // 2. "8월 급여 입금 (2,300,000원)"
+  const depositMatch = title.match(/^(\d{4}[-년.\s]*\d{1,2}월?|\d{1,2}월)\s*급여\s*입금(?:\s*\((.*?)\))?$/);
+  if (depositMatch) {
+    const periodStr = formatPeriodStr(depositMatch[1], locale);
+    const amount = depositMatch[2] ? ` (${formatAmountInText(depositMatch[2], locale)})` : "";
+    if (locale === "en") return `${periodStr} Salary Deposit${amount}`;
+    if (locale === "vi") return `Chuyển lương ${periodStr}${amount}`;
+    if (locale === "zh") return `${periodStr} 工资入账${amount}`;
+  }
+
+  // 3. "2025년 귀속 세무 점검 완료"
+  const taxCheckMatch = title.match(/^(\d{4})년?\s*귀속\s*세무\s*점검\s*완료$/);
+  if (taxCheckMatch) {
+    const year = taxCheckMatch[1];
+    if (locale === "en") return `${year} Tax Check Completed`;
+    if (locale === "vi") return `Hoàn tất kiểm tra thuế năm ${year}`;
+    if (locale === "zh") return `${year}年度税务核对完成`;
+  }
+
+  // 4. "연말정산 소득·세액공제 준비 점검 완료"
+  if (/^연말정산\s*(?:소득[·\s]*세액공제\s*준비\s*)?점검\s*완료$/.test(title)) {
+    if (locale === "en") return "Year-End Tax Settlement & Deduction Check Completed";
+    if (locale === "vi") return "Hoàn tất kiểm tra khấu trừ thuế quyết toán cuối năm";
+    if (locale === "zh") return "年终结算所得税扣除核对完成";
+  }
+
+  // 5. "급여 대조"
+  if (/^급여\s*대조$/.test(title)) {
+    if (locale === "en") return "Pay Check";
+    if (locale === "vi") return "Kiểm tra lương";
+    if (locale === "zh") return "工资核对";
+  }
+
+  // 6. "정기 급여일 (25일)"
+  const paydayMatch = title.match(/^정기\s*급여일(?:\s*\((\d+)일\))?$/);
+  if (paydayMatch) {
+    const day = paydayMatch[1];
+    if (locale === "en") return `Regular Payday${day ? ` (Day ${day})` : ""}`;
+    if (locale === "vi") return `Ngày nhận lương định kỳ${day ? ` (Ngày ${day})` : ""}`;
+    if (locale === "zh") return `常规发薪日${day ? `（${day}日）` : ""}`;
+  }
+
+  // 7. "예상 출국일"
+  if (title === "예상 출국일") {
+    if (locale === "en") return "Expected Departure Date";
+    if (locale === "vi") return "Ngày dự kiến xuất cảnh";
+    if (locale === "zh") return "预计出境日";
+  }
+
+  return title;
+}
+
+function localizeEventDescription(desc: string | undefined, locale: UiLocale): string | undefined {
+  if (!desc || locale === "ko") return desc;
+
+  // 1. "통장 입금액이 임금명세서 실지급액보다 320,080원 더 많습니다."
+  const moreMatch = desc.match(/통장\s*입금액이\s*임금명세서\s*실지급액보다\s*(.+?)\s*더\s*많습니다\.?/);
+  if (moreMatch) {
+    const amt = formatAmountInText(moreMatch[1], locale);
+    if (locale === "en") return `Bank deposit is ${amt} more than payslip net pay.`;
+    if (locale === "vi") return `Số tiền vào tài khoản nhiều hơn thực lĩnh trên phiếu lương ${amt}.`;
+    if (locale === "zh") return `银行入账金额比工资单实发金额多 ${amt}。`;
+  }
+
+  // 2. "통장 입금액이 임금명세서 실지급액보다 300,000원 더 적습니다." / "부족합니다."
+  const lessMatch = desc.match(/통장\s*입금액이\s*임금명세서\s*실지급액보다\s*(.+?)\s*(?:더\s*적습니다|부족합니다)\.?/);
+  if (lessMatch) {
+    const amt = formatAmountInText(lessMatch[1], locale);
+    if (locale === "en") return `Bank deposit is ${amt} less than payslip net pay.`;
+    if (locale === "vi") return `Số tiền vào tài khoản ít hơn thực lĩnh trên phiếu lương ${amt}.`;
+    if (locale === "zh") return `银行入账金额比工资单实发金额少 ${amt}。`;
+  }
+
+  // 3. "자료 확인이 필요하여 세액 비교를 제공하지 않았습니다."
+  if (/자료\s*확인이\s*필요하여\s*세액\s*비교를\s*제공하지\s*않았습니다\.?/.test(desc)) {
+    if (locale === "en") return "Tax comparison was not provided due to required document verification.";
+    if (locale === "vi") return "Không cung cấp so sánh thuế do cần xác minh thêm tài liệu.";
+    if (locale === "zh") return "因需进一步核对材料，暂未提供税额比对。";
+  }
+
+  // 4. "연말정산 소득·세액공제 준비 점검 완료"
+  if (/연말정산\s*소득[·\s]*세액공제\s*준비\s*점검\s*완료/.test(desc)) {
+    if (locale === "en") return "Year-end tax settlement income & deduction check completed.";
+    if (locale === "vi") return "Hoàn tất kiểm tra chuẩn bị khấu trừ thu nhập và thuế cuối năm.";
+    if (locale === "zh") return "年终结算所得税及税额扣除准备已核对完成。";
+  }
+
+  // 5. "연말정산 및 세무 점검 결과 확인"
+  if (/연말정산\s*및\s*세무\s*점검\s*결과\s*확인/.test(desc)) {
+    if (locale === "en") return "Check year-end tax settlement and tax inspection results.";
+    if (locale === "vi") return "Xem kết quả quyết toán và kiểm tra thuế cuối năm.";
+    if (locale === "zh") return "查看年终结算及税务核对结果。";
+  }
+
+  // 6. "임금명세서 실지급액과 실제 입금액이 일치합니다."
+  if (desc.includes("실제 입금액이 일치합니다") || desc.includes("정상 입금 확인")) {
+    if (locale === "en") return "Payslip net pay matches the actual deposit amount.";
+    if (locale === "vi") return "Thực lĩnh trên phiếu lương khớp hoàn toàn với số tiền vào tài khoản.";
+    if (locale === "zh") return "工资单实发金额与实际入账金额一致。";
+  }
+
+  // 7. "한국정밀 2026-08 급여 차액 확인 필요"
+  const diffWorkplaceMatch = desc.match(/(.+?)\s+(\d{4}[-년.\s]*\d{1,2}월?|\d{1,2}월)\s+급여\s+차액 확인 필요/);
+  if (diffWorkplaceMatch) {
+    const workplace = diffWorkplaceMatch[1];
+    const period = formatPeriodStr(diffWorkplaceMatch[2], locale);
+    if (locale === "en") return `${workplace} ${period} salary: Discrepancy detected - review required.`;
+    if (locale === "vi") return `Lương ${period} tại ${workplace}: Cần kiểm tra lại do có chênh lệch.`;
+    if (locale === "zh") return `${workplace} ${period} 工资存在差额，需进一步核对。`;
+  }
+
+  // 8. "계약상 월 급여지급일"
+  if (desc.includes("계약상 월 급여지급일")) {
+    if (locale === "en") return "Contractual monthly salary payment date";
+    if (locale === "vi") return "Ngày trả lương hàng tháng theo hợp đồng";
+    if (locale === "zh") return "合同约定的每月发薪日";
+  }
+
+  // 9. "체류/비자 만료 및 예상 출국일"
+  if (desc.includes("체류/비자 만료 및 예상 출국일")) {
+    if (locale === "en") return "Visa expiration and expected departure date";
+    if (locale === "vi") return "Hết hạn visa và ngày dự kiến xuất cảnh";
+    if (locale === "zh") return "签证到期及预计出境日";
+  }
+
+  return desc;
+}
+
 export default function CalendarPage() {
   const { state, hydrated, addEvent, removeEvent, toggleEvent, refreshFromBackend } = usePayCycle();
   const { t, locale } = useT();
@@ -387,9 +561,13 @@ export default function CalendarPage() {
                       </span>
                     </div>
 
-                    <p className="mt-1.5 text-sm font-extrabold text-foreground">{evt.title}</p>
+                    <p className="mt-1.5 text-sm font-extrabold text-foreground">
+                      {localizeEventTitle(evt.title, locale)}
+                    </p>
                     {evt.description && (
-                      <p className="mt-0.5 text-xs text-muted-foreground">{evt.description}</p>
+                      <p className="mt-0.5 text-xs text-muted-foreground">
+                        {localizeEventDescription(evt.description, locale)}
+                      </p>
                     )}
                   </div>
                 </div>
