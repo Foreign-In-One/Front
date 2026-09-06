@@ -86,13 +86,13 @@ export default function OnboardingPage() {
   const workStartRule = {
     noFuture: true,
     notBefore: draft.entryDate.value
-      ? { iso: draft.entryDate.value, label: '입국일' }
+      ? { iso: draft.entryDate.value, label: t('ob.label.entry') }
       : undefined,
   };
   const currentStartRule = {
     noFuture: true,
     notBefore: draft.workStartDate.value
-      ? { iso: draft.workStartDate.value, label: '최초 근무일' }
+      ? { iso: draft.workStartDate.value, label: t('ob.label.workStart') }
       : undefined,
   };
   const exitRule = { noPast: true };
@@ -446,7 +446,12 @@ export default function OnboardingPage() {
             {t('ob.done.title')}
           </h1>
           <p className="mt-3 text-muted-foreground text-sm">
-            {draft.nationality} · {draft.visa} ·{' '}
+            {(() => {
+              const nat = NATIONALITIES.find(
+                (n) => n.value === draft.nationality,
+              );
+              return nat ? t(nat.labelKey) : draft.nationality;
+            })()} · {draft.visa} ·{' '}
             {STATUS_OPTIONS.find((s) => s.value === draft.status)?.label}
             <br />
             {t('ob.done.sub')}
