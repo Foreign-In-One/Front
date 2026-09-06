@@ -29,7 +29,7 @@ export function koreaYear(now = new Date()): number {
 
 export function emptyTaxForm(now = new Date()): TaxForm {
   return {
-    taxYear: String(koreaYear(now) - 1),
+    taxYear: String(koreaYear(now)),
     annualIncome: '',
     nonTaxableIncome: '',
     confirmed: false,
