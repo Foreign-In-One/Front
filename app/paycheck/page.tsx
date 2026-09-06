@@ -283,7 +283,7 @@ export default function PayCheckPage() {
 
       if (matched) {
         setBankTx(matched);
-        const amt = Number(matched.tranAmt.replace(/[^0-9.-]+/g, "")) || 2260000;
+        const amt = Number(matched.tranAmt.replace(/[^0-9.-]+/g, "")) || 2300000;
         const dateIso =
           matched.bankTranDate && matched.bankTranDate.length === 8
             ? `${matched.bankTranDate.slice(0, 4)}-${matched.bankTranDate.slice(4, 6)}-${matched.bankTranDate.slice(6, 8)}`

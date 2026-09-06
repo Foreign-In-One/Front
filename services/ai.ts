@@ -62,8 +62,12 @@ export async function fetchAiPaycheckAnalysis(payload: {
         ok: true,
         isMock: false,
         data: {
-          headline: d.summary || localFallback.data.headline,
+          headline:
+            d.headline ||
+            (d.summary && d.summary.length <= 40 ? d.summary : payload.finding.title),
           summary: d.summary || localFallback.data.summary,
+          documentCheckGuide:
+            d.documentCheckGuide || localFallback.data.documentCheckGuide,
           causes:
             d.reasons && d.reasons.length > 0
               ? d.reasons.map((r, i) => {
@@ -295,6 +299,26 @@ export function generateLocalAiPaycheckAnalysis(payload: {
     };
   }
 
+  let documentCheckGuide = '임금명세서와 은행 입금 내역을 대조하여 세부 항목을 확인해보세요.';
+  if (status === 'INSUFFICIENT_DATA') {
+    documentCheckGuide = '이번 달 교부받은 임금명세서 사본이나 통장 거래내역서를 등록하여 3중 대조를 완료해보세요.';
+  } else if (status === 'MATCH') {
+    documentCheckGuide = '교부받은 임금명세서와 은행 입금 내역은 3년간 안전하게 보관하시는 것을 권장합니다.';
+  } else {
+    if (finding.id === 'base') {
+      documentCheckGuide = '근로계약서 제4조(기본급) 조항과 임금명세서의 기본급 항목을 대조해보세요. 계약서보다 적게 산정되었다면 변경 동의서 체결 여부나 일할 계산 여부를 사업장에 확인해야 합니다.';
+    } else if (finding.id === 'net' || finding.id === 'contract-deposit') {
+      const diffWon = finding.difference ? `${Math.abs(finding.difference).toLocaleString('ko-KR')}원` : '차액';
+      documentCheckGuide = `임금명세서의 '공제 내역(4대보험 소급 정산, 숙소비, 식대 등)'과 실제 통장 입금 거래내역서를 대조해보세요. 명세서에 기재되지 않은 ${diffWon}의 추가 공제가 있었는지 급여 담당자에게 확인해야 합니다.`;
+    } else if (finding.id === 'deduction') {
+      documentCheckGuide = '임금명세서의 4대보험(국민연금, 건강보험, 고용보험) 및 소득세 공제율과 기타 공제(기숙사비, 식대 등) 항목을 확인해보세요. 사전 서면 동의 없는 공제 항목이 있는지 점검이 필요합니다.';
+    } else if (finding.id === 'paydate') {
+      documentCheckGuide = '근로계약서에 명시된 임금 지급일과 실제 통장 입금 일시를 대조해보세요. 주말이나 공휴일로 인해 은행 영업일로 순연된 것인지 사업장에 확인해보세요.';
+    } else {
+      documentCheckGuide = '근로계약서, 임금명세서, 통장 거래내역서 3종을 대조하여 변동 항목의 세부 산출 근거를 확인해보세요.';
+    }
+  }
+
   const requiredEvidence =
     finding.requiredEvidence && finding.requiredEvidence.length > 0
       ? finding.requiredEvidence
@@ -310,8 +334,8 @@ export function generateLocalAiPaycheckAnalysis(payload: {
             idx === 0
               ? ('HIGH' as const)
               : idx === 1
-                ? ('MEDIUM' as const)
-                : ('LOW' as const),
+              ? ('HIGH' as const)
+              : ('MEDIUM' as const),
         }))
       : [
           {
@@ -328,6 +352,7 @@ export function generateLocalAiPaycheckAnalysis(payload: {
     data: {
       headline,
       summary,
+      documentCheckGuide,
       causes,
       legalBasis,
       requiredEvidence,
