@@ -8,17 +8,22 @@ import {
 } from './taxcheck-test-helpers.mjs';
 
 const now = new Date('2026-09-03T00:00:00Z');
-test('Tax form: defaults to previous completed Korean year with unknown amounts and answers', () => {
+test('Tax form: defaults to the current Korean year with unknown amounts and answers', () => {
   const form = f.emptyTaxForm(now);
-  assert.equal(form.taxYear, '2025');
+  assert.equal(form.taxYear, '2026');
   assert.equal(form.annualIncome, '');
   assert.equal(form.nonTaxableIncome, '');
   assert.equal(form.confirmed, false);
   assert.deepEqual(Object.values(form.conditions), [null, null, null, null]);
+  assert.equal(f.taxRequest(form, now).taxYear, 2026);
   assert.equal(f.koreaYear(new Date('2025-12-31T15:00:00Z')), 2026);
   assert.equal(
     f.emptyTaxForm(new Date('2025-12-31T14:59:59Z')).taxYear,
-    '2024',
+    '2025',
+  );
+  assert.equal(
+    f.emptyTaxForm(new Date('2025-12-31T15:00:00Z')).taxYear,
+    '2026',
   );
 });
 test('Tax form: blank/null differs from a confirmed zero and decimal values', () => {
