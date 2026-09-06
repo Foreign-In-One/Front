@@ -533,20 +533,22 @@ export default function PayCheckPage() {
       const current = docs[kind] ?? defaultDoc(kind, period);
       const nextFields: DocFields = { ...current.fields };
 
-      // 계약서는 기본급(basePay), 명세서 및 입금내역은 실지급/실입금액(netPay)이 핵심 검증 기준 금액입니다.
-      const primaryField: keyof DocFields = kind === "contract" ? "basePay" : "netPay";
-      nextFields[primaryField] = cand.amount;
-
-      // 라벨에 따라 세부 항목도 동기화
       const norm = (cand.label || "").trim().toLowerCase();
       if (norm.includes("기본급") || norm.includes("base") || norm.includes("월급")) {
         nextFields.basePay = cand.amount;
       } else if (norm.includes("실지급") || norm.includes("실수령") || norm.includes("차인지급") || norm.includes("net") || norm.includes("입금")) {
         nextFields.netPay = cand.amount;
+        // 스마트 보정: 명세서인데 기본급(basePay)이 비어있으면, 실지급액을 기본급 기본값으로 자동 채워줌
+        if (kind === "statement" && (nextFields.basePay === null || nextFields.basePay === undefined)) {
+          nextFields.basePay = cand.amount;
+        }
       } else if (norm.includes("수당") || norm.includes("연장") || norm.includes("식대")) {
         nextFields.allowances = cand.amount;
       } else if (norm.includes("공제")) {
         nextFields.deductions = cand.amount;
+      } else {
+        const primaryField: keyof DocFields = kind === "contract" ? "basePay" : "netPay";
+        nextFields[primaryField] = cand.amount;
       }
 
       setDocs((prev) => ({
@@ -733,6 +735,13 @@ export default function PayCheckPage() {
         ? Number(String(docs.contract.fields.basePay).replace(/[^0-9.-]+/g, "")) || undefined
         : undefined;
 
+    const statementBase =
+      typeof docs.statement?.fields.basePay === "number"
+        ? docs.statement.fields.basePay
+        : docs.statement?.fields.basePay
+        ? Number(String(docs.statement.fields.basePay).replace(/[^0-9.-]+/g, "")) || undefined
+        : undefined;
+
     const statementNet =
       typeof docs.statement?.fields.netPay === "number"
         ? docs.statement.fields.netPay
@@ -747,10 +756,33 @@ export default function PayCheckPage() {
         ? Number(String(docs.deposit.fields.netPay).replace(/[^0-9.-]+/g, "")) || undefined
         : undefined;
 
-    const diff =
+    // 1. 프론트엔드 룰 엔진이 발견한 핵심 불일치 finding의 차액
+    const primaryFinding = result.findings[0];
+    const findingDiff = primaryFinding?.difference != null ? primaryFinding.difference : undefined;
+
+    // 2. 기본급 차액 (명세서 기본급 - 계약서 기본급: 음수면 삭감)
+    const baseDiff =
+      contractBase !== undefined && statementBase !== undefined
+        ? statementBase - contractBase
+        : undefined;
+
+    // 3. 실지급액 차액 (입금액 - 명세서 실지급액: 음수면 부족)
+    const netDiff =
       statementNet !== undefined && depositNet !== undefined
         ? depositNet - statementNet
         : undefined;
+
+    // 백엔드로 보낼 대표 금액 차액 (통화 단위):
+    // 1순위: 기본급 차액 (명세 기본급 vs 계약 기본급 불일치)
+    // 2순위: 실지급액 차액 (통장 입금액 vs 명세 실지급액 불일치)
+    // 그 외(지연 일수, 누락 문서 수 등)는 금액 차액이 아니므로 0
+    const effectiveDifference =
+      baseDiff !== undefined && Math.abs(baseDiff) > 0
+        ? baseDiff
+        : netDiff !== undefined && Math.abs(netDiff) > 0
+        ? netDiff
+        : 0;
+
     const rawExpected = docs.statement?.fields.payDate || `${period}-25`;
     const expectedDate = rawExpected.includes("T") ? rawExpected.split("T")[0] : rawExpected.slice(0, 10);
 
@@ -764,9 +796,9 @@ export default function PayCheckPage() {
       const beRes = await analyzePaycheckApi({
         payPeriod: period,
         contractAmount: contractBase,
-        payslipAmount: statementNet,
+        payslipAmount: statementNet ?? statementBase,
         actualAmount: depositNet,
-        differenceAmount: diff,
+        differenceAmount: effectiveDifference,
         expectedPaymentDate: expectedDate,
         paymentDate: actualDate,
       });
